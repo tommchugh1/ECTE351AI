@@ -9,7 +9,8 @@ model = YOLO("yolov8n.pt")
 desktop = os.path.expanduser("~/Desktop")
 
 # Capture a frame from the camera
-frame = desktop + "\Yolo Demo/ECTE351AI/AI/example.webp"
+#frame = desktop + "\Yolo Demo/ECTE351AI/AI/example.webp"
+frame = os.getcwd() + "\\AI\\example.webp"
 
     
 # Run YOLO model on the captured frame and store the results
