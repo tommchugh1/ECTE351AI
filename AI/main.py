@@ -14,4 +14,4 @@ frame = os.getcwd() + "\\Desktop\\Yolo Demo\\ECTE351AI\\AI\\example.webp"
 
     
 # Run YOLO model on the captured frame and store the results
-results = model.predict(source=frame
+results = model.predict(source=frame)
