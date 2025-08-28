@@ -1,17 +1,41 @@
 import cv2
 from ultralytics import YOLO
 import os
-import torch
 
+#Find local directory of file
+header = os.path.dirname(os.path.realpath(__file__))
+frame = header + "\\example.webp"
 
 # Load YOLOv8
-model = YOLO("yolov8n.pt")
-desktop = os.path.expanduser("~/Desktop")
+model = YOLO(header + "\\yolov8n.pt")
+model.export(format="openvino")
+ov_model = YOLO(header + "\\yolov8n_openvino_model/")
 
-# Capture a frame from the camera
-#frame = desktop + "\Yolo Demo/ECTE351AI/AI/example.webp"
-frame = os.path.dirname(os.path.realpath(__file__)) + "\\example.webp"
+# Run YOLO model on the file using CPU
+'''
+results = ov_model(frame, device="intel:cpu")
+results = ov_model(frame, device="intel:cpu")
+results = ov_model(frame, device="intel:cpu")
+results = ov_model(frame, device="intel:cpu")
+results = ov_model(frame, device="intel:cpu")
+'''
 
-    
-# Run YOLO model on the captured frame and store the results
-results = model.predict(source=frame)
+# Run YOLO model on the file using GPU
+#'''
+results = ov_model(frame, device="intel:gpu")
+results = ov_model(frame, device="intel:gpu")
+results = ov_model(frame, device="intel:gpu")
+results = ov_model(frame, device="intel:gpu")
+results = ov_model(frame, device="intel:gpu")
+#'''
+
+
+# Run YOLO model on the file using NPU
+'''
+results = ov_model(frame, device="intel:npu")
+results = ov_model(frame, device="intel:npu")
+results = ov_model(frame, device="intel:npu")
+results = ov_model(frame, device="intel:npu")
+results = ov_model(frame, device="intel:npu")
+'''
+
