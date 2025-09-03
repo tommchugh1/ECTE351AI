@@ -2,41 +2,49 @@ import tkinter as tk
 from PIL import Image, ImageTk
 import tkinter.messagebox as messagebox
 import os
+import webbrowser
+import subprocess
+import sys
 
-# --- Login credentials
+# --- Login credentials ---
+
 users = {
     "Joy Pasala": "7452408",
     "Jonathan Walsh": "pass1",
-    "Tom McHugh": "6413717",
+    "Tom Mchugh": "6413717",
     "Jacob Rhados": "8002812",
     "Jerome Eid": "pass4",
     "Jason Watson": "7678721"
 }
 
 # --- Theme Settings ---
+
 BG_COLOR = "#ffffff"
 BTN_COLOR = "#007ACC"
 BTN_TEXT_COLOR = "white"
 ENTRY_BG = "white"
 
 # --- File to store remembered user ---
+
 REMEMBER_FILE = "remember_me.txt"
 
-# --- Main Window Setup
+# --- Main Window Setup ---
+
 root = tk.Tk()
 root.title("YourQualityCheck")
-root.state("zoomed")  
+root.state("zoomed")
 root.configure(bg=BG_COLOR)
 root.resizable(False, False)
 
-# --- Global state for remembered username
-remembered_username = ""
+# --- Global state for remembered username ---
 
+remembered_username = ""
 if os.path.exists(REMEMBER_FILE):
     with open(REMEMBER_FILE, "r") as f:
         remembered_username = f.read().strip()
 
 # --- Splash Frame ---
+
 splash_frame = tk.Frame(root, bg=BG_COLOR)
 splash_frame.pack(fill="both", expand=True)
 
@@ -48,13 +56,15 @@ try:
     logo = ImageTk.PhotoImage(logo_img)
     logo_label = tk.Label(splash_frame, image=logo, bg=BG_COLOR)
     logo_label.place(relx=0.5, rely=0.4, anchor="center")
-except:
+except Exception:
     logo_label = tk.Label(splash_frame, text="Logo Not Found", font=("Arial", 20), bg=BG_COLOR)
     logo_label.place(relx=0.5, rely=0.4, anchor="center")
 
 # --- Login Screen ---
+
 def show_login_screen():
     splash_frame.destroy()
+
     login_frame = tk.Frame(root, bg=BG_COLOR)
     login_frame.pack(pady=20)
 
@@ -63,10 +73,10 @@ def show_login_screen():
         login_logo_img = login_logo_img.resize((150, 150), Image.Resampling.LANCZOS)
         login_logo = ImageTk.PhotoImage(login_logo_img)
         logo_label = tk.Label(login_frame, image=login_logo, bg=BG_COLOR)
-        logo_label.grid(row=0, column=0, columnspan=3, pady=(10, 20))
-    except:
-        logo_label = tk.Label(login_frame, text="Logo", bg=BG_COLOR, font=("Arial", 14))
-        logo_label.grid(row=0, column=0, columnspan=3, pady=(10, 20))
+        logo_label.grid(row=0, column=0, columnspan=3, pady=(10,20))
+    except Exception:
+        logo_label = tk.Label(login_frame, text="Logo", bg=BG_COLOR, font=("Arial",14))
+        logo_label.grid(row=0, column=0, columnspan=3, pady=(10,20))
 
     tk.Label(login_frame, text="User Name:", bg=BG_COLOR, font=("Arial", 12)).grid(row=1, column=0, padx=10, pady=10, sticky="e")
     user_entry = tk.Entry(login_frame, font=("Arial", 12), width=25, bg=ENTRY_BG)
@@ -91,6 +101,7 @@ def show_login_screen():
     remember_var = tk.BooleanVar()
     if remembered_username:
         remember_var.set(True)
+
     remember_check = tk.Checkbutton(login_frame, text="Remember Me", variable=remember_var, bg=BG_COLOR)
     remember_check.grid(row=4, column=0, columnspan=3, pady=(0, 5))
 
@@ -102,7 +113,7 @@ def show_login_screen():
             messagebox.showerror("Error", "Enter a valid username first.")
 
     forgot_btn = tk.Label(login_frame, text="Forgot Password?", fg="blue", cursor="hand2", bg=BG_COLOR, font=("Arial", 10))
-    forgot_btn.grid(row=5, column=0, columnspan=3, pady=(0, 20))
+    forgot_btn.grid(row=5, column=0, columnspan=3, pady=(0,20))
     forgot_btn.bind("<Button-1>", lambda e: forgot_password())
 
     def login():
@@ -121,88 +132,181 @@ def show_login_screen():
             messagebox.showerror("Access Denied", "Invalid username or password.")
 
     login_button = tk.Button(login_frame, text="Login", command=login, font=("Arial", 12), width=15, bg=BTN_COLOR, fg=BTN_TEXT_COLOR)
-    login_button.grid(row=6, column=0, columnspan=3, pady=(0, 15))
+    login_button.grid(row=6, column=0, columnspan=3, pady=(0,15))
 
+    # Keep reference to image to prevent garbage collection
     login_frame.image = login_logo
 
-# --- Dashboard Screen ---
+# --- Global navigation state ---
+
+page_history = []
+forward_stack = []
+
+# --- Dashboard ---
+
 def show_dashboard(username):
-    dashboard = tk.Frame(root, bg="white")
-    dashboard.pack(fill="both", expand=True)
+    for widget in root.winfo_children():
+        widget.destroy()
+    page_history.clear()
+    forward_stack.clear()
 
-    # Left navigation panel
-    nav_panel = tk.Frame(dashboard, bg="#1f78d1", width=170)
-    nav_panel.pack(side="left", fill="y")
-    nav_panel.pack_propagate(False)
+    main_frame = tk.Frame(root, bg="white")
+    main_frame.pack(fill="both", expand=True)
 
-    # Main content panel
-    content_panel = tk.Frame(dashboard, bg="white")
+    title_label = tk.Label(main_frame, text="Welcome to YourQualityCheck", font=("Arial", 20, "bold"), bg="white")
+    title_label.pack(pady=(20, 10))
+
+    try:
+        logo_img = Image.open(logo_path)
+        logo_img = logo_img.resize((250, 250), Image.Resampling.LANCZOS)
+        logo = ImageTk.PhotoImage(logo_img)
+        logo_label = tk.Label(main_frame, image=logo, bg="white")
+        logo_label.image = logo
+        logo_label.pack(pady=(0, 10))
+    except Exception:
+        logo_label = tk.Label(main_frame, text="Logo Not Found", font=("Arial", 16), bg="white")
+        logo_label.pack(pady=(0, 10))
+
+    icons = [
+        {"text": "👤", "label": "Profile", "command": lambda: open_section("profile", username), "bg": "#e0e0e0"},
+        {"text": "📦", "label": "Inventory", "command": lambda: open_section("inventory", username), "bg": "#e1f5fe"},
+        {"text": "📷", "label": "Camera Feed", "command": lambda: open_section("camera", username), "bg": "#ffe0b2"},
+        {"text": "🖼", "label": "Photo Gallery", "command": lambda: open_section("gallery", username), "bg": "#c8e6c9"},
+        {"text": "🚪", "label": "Logout", "command": lambda: do_logout(), "bg": "#ffcdd2"}
+    ]
+
+    buttons_frame = tk.Frame(main_frame, bg="white")
+    buttons_frame.pack(expand=True)
+
+    for col, item in enumerate(icons):
+        btn = tk.Button(buttons_frame, text=item["text"], font=("Arial", 30), width=6, height=2, bg=item["bg"], command=item["command"])
+        btn.grid(row=0, column=col, padx=20, pady=20)
+        tk.Label(buttons_frame, text=item["label"], font=("Arial", 13, "bold"), bg="white").grid(row=1, column=col)
+
+def open_section(section, username):
+    if not page_history or page_history[-1] != section:
+        page_history.append(section)
+        forward_stack.clear()
+    render_section(section, username)
+
+def go_back(username):
+    if len(page_history) > 1:
+        forward_stack.append(page_history.pop())
+        render_section(page_history[-1], username)
+
+def go_forward(username):
+    if forward_stack:
+        section = forward_stack.pop()
+        page_history.append(section)
+        render_section(section, username)
+
+def clear_root():
+    for widget in root.winfo_children():
+        widget.destroy()
+
+def do_logout():
+    page_history.clear()
+    forward_stack.clear()
+    clear_root()
+    show_login_screen()
+
+def render_section(section, username):
+    clear_root()
+
+    sidebar = tk.Frame(root, bg="#bdbdbd", width=170)
+    sidebar.pack(side="left", fill="y")
+    sidebar.pack_propagate(False)
+
+    def to_dashboard():
+        show_dashboard(username)
+
+    arrow_btn = tk.Button(
+        sidebar, text="← Dashboard", font=("Arial", 12),
+        bg="#eeeeee", fg="black",
+        relief="flat", anchor="w", padx=10, pady=10,
+        activebackground="#d4d4d4", command=to_dashboard
+    )
+    arrow_btn.pack(fill="x", pady=(5, 2))
+
+    section_titles = {
+        "profile": "👤 Profile",
+        "inventory": "📦 Inventory",
+        "camera": "📷 Camera Feed",
+        "gallery": "🖼 Photo Gallery",
+        "logout": "🚪 Logout"
+    }
+
+    icon_commands = {
+        "profile": lambda: render_section("profile", username),
+        "inventory": lambda: render_section("inventory", username),
+        "camera": lambda: render_section("camera", username),
+        "gallery": lambda: render_section("gallery", username),
+        "logout": do_logout
+    }
+
+    for key in ["profile", "inventory", "camera", "gallery", "logout"]:
+        bg_col = "#eeeeee" if key == section else "#bdbdbd"
+        style = ("Arial", 12, "bold" if key == section else "normal")
+        btn = tk.Button(
+            sidebar,
+            text=section_titles[key],
+            font=style,
+            bg=bg_col,
+            fg="black",
+            relief="flat",
+            anchor="w",
+            padx=10,
+            pady=10,
+            activebackground="#d4d4d4",
+            command=icon_commands[key]
+        )
+        btn.pack(fill="x", pady=1)
+
+    content_panel = tk.Frame(root, bg="white")
     content_panel.pack(side="right", expand=True, fill="both")
 
-    # Fixed title
-    title_label = tk.Label(content_panel, text="Welcome to YourQualityCheck", font=("Arial", 20, "bold"), bg="white")
-    title_label.pack(pady=(20, 5))
+    title = section_titles.get(section, "Section")
+    tk.Label(content_panel, text=title, font=("Arial", 18, "bold"), bg="white").pack(pady=(20, 5))
 
-    # Content area for dynamic pages (this is key)
-    content_area = tk.Frame(content_panel, bg="white")
-    content_area.pack(expand=True, fill="both", padx=20, pady=20)
+    def access_camera_section():
+        live_feed_btn = tk.Button(
+            content_panel, text="📡 Access Live Feed", font=("Arial", 16, "bold"),
+            width=20, height=3, bg="#90caf9", fg="black",
+            command=open_live_feed)
+        live_feed_btn.pack(pady=(40, 20))
 
-    def clear_content():
-        for widget in content_area.winfo_children():
-            widget.destroy()
+        local_camera_btn = tk.Button(
+            content_panel, text="📷 Access Camera", font=("Arial", 16, "bold"),
+            width=20, height=3, bg="#a5d6a7", fg="black",
+            command=open_local_camera)
+        local_camera_btn.pack(pady=(0, 20))
 
-    # Page render functions
-    def show_profile():
-        clear_content()
-        tk.Label(content_area, text=f"👤  User: {username}", font=("Arial", 14), bg="white").pack(anchor="w", pady=5)
-        tk.Label(content_area, text="This is your profile section.", font=("Arial", 12), bg="white").pack(anchor="w")
+    section_func_map = {
+        "profile": lambda: tk.Label(content_panel, text=f"User: {username}", font=("Arial", 14), bg="white").pack(pady=20),
+        "inventory": lambda: tk.Label(content_panel, text="Track and manage all items here.", font=("Arial", 12), bg="white").pack(pady=20),
+        "camera": access_camera_section,
+        "gallery": lambda: tk.Label(content_panel, text="Feature coming soon...", font=("Arial", 12), bg="white").pack(pady=20),
+    }
 
-    def show_inventory():
-        clear_content()
-        tk.Label(content_area, text="📦  Inventory Section", font=("Arial", 14), bg="white").pack(anchor="w", pady=5)
-        tk.Label(content_area, text="Track and manage all items here.", font=("Arial", 12), bg="white").pack(anchor="w")
+    if section in section_func_map:
+        section_func_map[section]()
 
-    def show_camera():
-        clear_content()
-        tk.Label(content_area, text="📷  Camera Access", font=("Arial", 14), bg="white").pack(anchor="w", pady=5)
-        tk.Label(content_area, text="Feature coming soon...", font=("Arial", 12), bg="white").pack(anchor="w")
-
-    def show_gallery():
-        clear_content()
-        tk.Label(content_area, text="🖼️  Photo Gallery", font=("Arial", 14), bg="white").pack(anchor="w", pady=5)
-        tk.Label(content_area, text="Feature coming soon...", font=("Arial", 12), bg="white").pack(anchor="w")
-
-    def do_logout():
-        dashboard.destroy()
-        show_login_screen()
-
-    def create_nav_button(text, command, color="#ffffff", fg="black"):
-        btn = tk.Button(nav_panel, text=text, font=("Arial", 11), bg=color, fg=fg,
-                        relief="flat", activebackground="#005fa3", activeforeground="white",
-                        command=command, anchor="w", padx=15)
-        btn.pack(fill="x", pady=2)
-        return btn
-
-    # Navigation Buttons
-    create_nav_button("📋  My Profile", show_profile)
-    create_nav_button("📦  Inventory", show_inventory)
-    create_nav_button("📷  Access Camera", show_camera)
-    create_nav_button("🖼️Photo Gallery", show_gallery)
-    create_nav_button("🚪  Logout", do_logout, color="#dc3545", fg="white")
-
-    # Bottom right logo
+def open_live_feed():
+    stream_url = "http://localhost:5000/video_feed"
     try:
-        small_logo_img = Image.open(r"C:\Users\joypa\Downloads\logo_small.png")
-        small_logo_img = small_logo_img.resize((60, 60), Image.Resampling.LANCZOS)
-        small_logo = ImageTk.PhotoImage(small_logo_img)
+        webbrowser.open(stream_url)
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to open live feed URL:\n{e}")
 
-        logo_widget = tk.Label(content_panel, image=small_logo, bg="white")
-        logo_widget.image = small_logo
-        logo_widget.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-10)
-    except:
-        pass
-
+def open_local_camera():
+    # Replace this with your actual Video_Feed.py location
+    script_path = r"C:\Users\joypa\path_to\Video_Feed.py"
+    try:
+        subprocess.Popen([sys.executable, script_path])
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to launch camera app:\n{e}")
 
 # --- Start with splash ---
+
 root.after(2000, show_login_screen)
 root.mainloop()
