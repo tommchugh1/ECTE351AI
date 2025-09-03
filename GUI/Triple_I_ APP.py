@@ -7,7 +7,7 @@ import os
 users = {
     "Joy Pasala": "7452408",
     "Jonathan Walsh": "pass1",
-    "Tom Mchugh": "6413717",
+    "Tom McHugh": "6413717",
     "Jacob Rhados": "8002812",
     "Jerome Eid": "pass4",
     "Jason Watson": "7678721"
