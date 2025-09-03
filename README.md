@@ -1,7 +1,7 @@
 ECTE351 Group 8 Project:
 Shared with Tom, Jonathan and Joy
 
-Published publically for marking purposes by ECTE315 staff
+Published publically for marking purposes by ECTE351 staff
 
 The goal of this project is to design and manufacture a quality evaluation system that utilises computer vision and machine learning. The selected CV model will be Yolo v8 due to it's lightweight and exceptional object detection. We will retrain the model using out own data for our own use case. 
 
