@@ -12,31 +12,14 @@ model.export(format="openvino")
 #Load OpenVino model
 ov_model = YOLO(header + "\\MODELS\\" + "yolov8n_openvino_model")
 
-# Run model on the file using CPU
-'''
-results = ov_model(frame, device="intel:cpu")
-results = ov_model(frame, device="intel:cpu")
-results = ov_model(frame, device="intel:cpu")
-results = ov_model(frame, device="intel:cpu")
-results = ov_model(frame, device="intel:cpu")
-'''
 
-# Run model on the file using GPU
-#'''
-results = ov_model(frame, device="intel:gpu")
-results = ov_model(frame, device="intel:gpu")
-results = ov_model(frame, device="intel:gpu")
-results = ov_model(frame, device="intel:gpu")
-results = ov_model(frame, device="intel:gpu")
-#'''
+#BENCHMARK
+def testProcessor(processor, iterations):
+    for i in range(iterations):
+        results = ov_model(frame, device="intel:"+processor)
 
 
-# Run model on the file using NPU
-'''
-results = ov_model(frame, device="intel:npu")
-results = ov_model(frame, device="intel:npu")
-results = ov_model(frame, device="intel:npu")
-results = ov_model(frame, device="intel:npu")
-results = ov_model(frame, device="intel:npu")
-'''
+#PROCESSORS: cpu, gpu, npu
+testProcessor("gpu", 10)
+
 
