@@ -1,4 +1,4 @@
 train: dataset/images/train
 val: dataset/images/val
-nc: 3
-names: ['good', 'bent', dinted]
+nc: 4
+names: ['Bent', 'Bent And Dethreaded', 'Dethreaded', 'Normal']

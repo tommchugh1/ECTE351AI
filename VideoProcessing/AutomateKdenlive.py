@@ -58,10 +58,10 @@ def open_kdenlive_with_app(filepath):
         print(f"Failed to open file with Kdenlive: {e}")
 
 if __name__ == "__main__":
-    original_kdenlive_path = r"C:\Users\jonat\Documents\GitHub\ECTE351AI\VideoProcessing\InputNormalOutputFiltered.kdenlive"
-    new_clip_filename = "2025-08-26 13-17-13"
+    original_kdenlive_path = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\InputNormalOutputFiltered.kdenlive"
+    new_clip_filename = "2025-08-26 13-17-13" #Replace this with whatever has just been captured
     
-    modified_kdenlive_path = rf"C:\Users\jonat\Documents\GitHub\ECTE351AI\VideoProcessing\InputNormalOutputFiltered_{new_clip_filename}.kdenlive"    
+    modified_kdenlive_path = rf"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\InputNormalOutputFiltered_{new_clip_filename}.kdenlive"    
     modified_file = replace_clip_filename(original_kdenlive_path, new_clip_filename, modified_kdenlive_path)
     if modified_file:
         open_kdenlive_with_app(modified_file)
