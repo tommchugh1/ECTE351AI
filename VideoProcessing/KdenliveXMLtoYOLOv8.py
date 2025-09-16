@@ -15,10 +15,11 @@ import yaml
 # 9. Ensured proper YAML formatting using bracketed list style (`names: ['a', 'b', 'c']`).
 # 10. Pipeline output is YOLOv8-ready for model training or validation.
 # More info at https://roboflow.com/formats/yolov8-pytorch-txt and https://docs.ultralytics.com/usage/simple-utilities/#ultralytics-sweep-annotation 
+#Ensure that the image output has names "ImgSeq" format
 
 # === CONFIG ===
-input_xml = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\InputNormalOutputFiltered.kdenlive"
-image_folder = r"C:\Users\Group8\Videos\BoundingBoxOutput"
+input_xml = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\InputNormalOutputFiltered_2025-08-26 13-17-13.kdenlive"
+image_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\ImgSeq"
 output_yaml = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\dataset\data.yaml"
 output_label_folder = os.path.join(image_folder, "labels")  # Save .txt here
 image_width = 1280
