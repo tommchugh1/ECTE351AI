@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 # --- CONFIG ---
-txt_file = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\250916 1600\labels\ImgSeq_00380.txt"
+txt_file = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\250916 1600\labels\ImgSeq_00381.txt"
 image_width = 1920
 image_height = 1080
 class_colors = {0:"red", 1:"blue", 2:"green", 3:"yellow"}
