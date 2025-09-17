@@ -18,12 +18,12 @@ import yaml
 #Ensure that the image output has names "ImgSeq" format
 
 # === CONFIG ===
-input_xml = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\InputNormalOutputFiltered_2025-08-26 13-17-13.kdenlive"
-image_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\ImgSeq"
+input_xml = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\InputNormalOutputFiltered.kdenlive"
+image_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\250916 1600"
 output_yaml = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\dataset\data.yaml"
 output_label_folder = os.path.join(image_folder, "labels")  # Save .txt here
-image_width = 1280
-image_height = 720
+image_width = 1920
+image_height = 1080
 frame_rate = 25  # Adjust if different
 
 # === CLASS MAPPING ===
@@ -159,59 +159,3 @@ for img_filename in image_files:
             f.write("")
 
 print(f"✅ Wrote {len(image_files)} label files to '{output_label_folder}'")
-
-
-# === Extract class names from producers ===
-
-# Store producer_id → clipname
-producer_names = {}
-
-for producer in root.iter("producer"):
-    producer_id = producer.get("id")
-    
-    # Skip "black" producers or "producer0"
-    is_black = any(
-        prop.get("name") == "resource" and prop.text.strip().lower() == "black"
-        for prop in producer.findall("property")
-    )
-    if is_black or producer_id == "producer0":
-        continue
-
-    class_name = None
-
-    for prop in producer.findall("property"):
-        if prop.get("name") == "kdenlive:clipname":
-            class_name = prop.text.strip()
-            break
-
-    if not class_name:
-        for prop in producer.findall("property"):
-            if prop.get("name") == "resource":
-                resource_path = prop.text.strip()
-                class_name = os.path.splitext(os.path.basename(resource_path))[0]
-                break
-
-    if not class_name:
-        class_name = producer_id
-
-    producer_names[producer_id] = class_name
-
-# === Sort by producer ID number ===
-sorted_producers = sorted(
-    producer_names.items(),
-    key=lambda item: int(item[0].replace("producer", ""))
-)
-
-class_names = [name for _, name in sorted_producers]
-
-# === Write YAML with inline list ===
-yaml_data = f"""train: dataset/images/train
-val: dataset/images/val
-nc: {len(class_names)}
-names: {class_names}
-"""
-
-with open(output_yaml, 'w') as f:
-    f.write(yaml_data)
-
-print(f"✅ data.yaml written with {len(class_names)} classes to: {output_yaml}")
