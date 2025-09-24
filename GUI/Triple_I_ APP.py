@@ -1,218 +1,163 @@
+# Triple_I_app.py
+
 import tkinter as tk
 from PIL import Image, ImageTk
 import tkinter.messagebox as messagebox
-import os, webbrowser, subprocess, sys, time
+import webbrowser, subprocess, sys, time
 from pathlib import Path
-import fnmatch
 
-# ========= Project layout & assets =========
-PROJECT_ROOT = Path(__file__).resolve().parent
+# =============== CONFIG ===============
 
-# Expected relative locations (fallback to recursive search if not found)
-CANDIDATES = {
-    "execute":   ["AI/execute.py", "execute.py"],                          # YOLO OpenVINO runner
-    "train":     ["AI/train.py", "train.py"],                              # YOLO training
-    "auto":      ["VideoProcessing/AutomateKdenlive.py"],                  # Replace clip filename and open Kdenlive
-    "xml2yolo":  ["VideoProcessing/KdenliveXMLtoYOLOv8.py"],               # Convert Kdenlive → YOLO labels
-    "viz_one":   ["VideoProcessing/visualiseTXT.py"],                      # Visualise one .txt
-    "viz_batch": ["VideoProcessing/BatchVisualiseTXTBB.py"],               # Batch visualise
-    # optional local camera/Flask app (if your project has it)
-    "video_feed": ["GUI/Video_Feed.py", "Video_Feed.py", "video_feed.py"]
+# App look & feel
+BG = "#ffffff"
+TITLE_FONT = ("Arial", 26, "bold")
+SECTION_FONT = ("Arial", 22, "bold")
+ICON_FONT = ("Arial", 28, "bold")
+LABEL_FONT = ("Arial", 13, "bold")
+BTN_FONT = ("Arial", 14, "bold")
+
+TILE_W, TILE_H = 170, 150  # tile size in px
+TILE_PADX, TILE_PADY = 30, 18
+
+# Tile colors (matching your original palette)
+COLORS = {
+    "grey":   "#e0e0e0",
+    "blue":   "#e8f5ff",
+    "peach":  "#ffe0b2",
+    "green":  "#c8e6c9",
+    "pink":   "#ffcdd2",
 }
 
-# Logo (same look & feel)
-LOGO_PATH = r"C:\Users\Group8\Downloads\logo_final.jpg"  # keep your existing path or change here
+# Logo (used on splash & dashboard). Change if needed.
+LOGO_PATH = r"C:\Users\Group8\Downloads\logo_final.jpg"
 
-# ========= Auth / UI theme =========
-users = {
+# Live feed URL
+LIVE_FEED_URL = "http://localhost:5000/video_feed"
+
+# Hard-wired tool paths (as requested)
+SCRIPT_PATHS = {
+    "execute":   Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\execute.py"),
+    "train":     Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\train.py"),
+    "auto":      Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\AutomateKdenlive.py"),
+    "xml2yolo":  Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\KdenliveXMLtoYOLOv8.py"),
+    "viz_one":   Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\visualiseTXT.py"),
+    "viz_batch": Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\BatchVisualiseTXTBB.py"),
+}
+
+# Simple user store
+USERS = {
     "Joy Pasala": "7452408",
     "Jonathan Walsh": "pass1",
     "Tom Mchugh": "6413717",
     "Jacob Rhados": "8002812",
     "Jerome Eid": "pass4",
-    "Jason Watson": "7678721"
+    "Jason Watson": "7678721",
 }
 
-BG_COLOR = "#ffffff"
-BTN_COLOR = "#007ACC"
-BTN_TEXT_COLOR = "white"
-ENTRY_BG = "white"
-REMEMBER_FILE = PROJECT_ROOT / "remember_me.txt"
+REMEMBER_FILE = Path(__file__).resolve().parent / "remember_me.txt"
 
-# ========= Utility: robust file resolver & launcher =========
-def resolve_path(key: str) -> Path | None:
-    """Return the first matching file path from CANDIDATES[key], or by recursive search."""
-    if key not in CANDIDATES:
-        return None
+# =============== UTILITIES ===============
 
-    # try preferred relative paths
-    for rel in CANDIDATES[key]:
-        p = (PROJECT_ROOT / rel).resolve()
-        if p.exists():
-            return p
-
-    # fallback: recursive search for the basename(s)
-    basenames = [Path(rel).name for rel in CANDIDATES[key]]
-    for root, _, files in os.walk(PROJECT_ROOT):
-        for name in basenames:
-            matches = fnmatch.filter(files, name)
-            if matches:
-                return Path(root) / matches[0]
-    return None
-
-def run_script_by_key(key: str):
-    """Find and start a script in a separate process with its dir as CWD."""
-    p = resolve_path(key)
-    if not p:
-        messagebox.showerror("Error", f"Could not find script for '{key}'.\nLooked under: {CANDIDATES.get(key)}")
+def run_script(path: Path):
+    """Launch a Python script in another process with its folder as CWD."""
+    if not path.exists():
+        messagebox.showerror("Error", f"File not found:\n{path}")
         return
     try:
-        subprocess.Popen([sys.executable, str(p)], cwd=str(p.parent))
+        subprocess.Popen([sys.executable, str(path)], cwd=str(path.parent))
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to run {p.name}:\n{e}")
+        messagebox.showerror("Error", f"Failed to run {path.name}:\n{e}")
 
-def start_live_feed_then_open():
-    """
-    Try to start a local Flask/OpenCV feed if a feed script exists,
-    then open the browser at /video_feed. If no script is found, still open the URL
-    (works if you already run the feed elsewhere).
-    """
-    feed_path = resolve_path("video_feed")
-    if feed_path:
-        try:
-            # spawn the feed server/viewer in background
-            subprocess.Popen([sys.executable, str(feed_path)], cwd=str(feed_path.parent))
-            time.sleep(1.5)  # small warm-up
-        except Exception as e:
-            messagebox.showwarning("Live Feed", f"Started to open feed script failed:\n{e}\nOpening URL anyway…")
-
-    stream_url = "http://localhost:5000/video_feed"
+def open_live_feed():
     try:
-        webbrowser.open(stream_url)
+        webbrowser.open(LIVE_FEED_URL)
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open live feed URL:\n{e}")
 
-# ========= Tk root & splash =========
+def make_tile(parent, title, icon_text, bg_color, command):
+    """Create a colored square tile with an icon-like text; click anywhere to trigger command."""
+    container = tk.Frame(parent, bg="white")
+    tile = tk.Frame(container, bg=bg_color, width=TILE_W, height=TILE_H,
+                    highlightthickness=1, highlightbackground="#9e9e9e")
+    tile.pack_propagate(False)
+    tile.pack(padx=6, pady=(0, 6))
+
+    icon_lbl = tk.Label(tile, text=icon_text, font=ICON_FONT, bg=bg_color, fg="black")
+    icon_lbl.pack(expand=True)
+
+    # Click behavior on tile and icon
+    for widget in (tile, icon_lbl):
+        widget.bind("<Button-1>", lambda _e: command())
+
+    # Label
+    tk.Label(container, text=title, font=LABEL_FONT, bg="white").pack()
+
+    return container
+
+# =============== APP ROOT ===============
+
 root = tk.Tk()
 root.title("YourQualityCheck")
 root.state("zoomed")
-root.configure(bg=BG_COLOR)
+root.configure(bg=BG)
 root.resizable(False, False)
 
-splash = tk.Frame(root, bg=BG_COLOR)
-splash.pack(fill="both", expand=True)
+# =============== SPLASH ===============
 
-try:
-    logo_img = Image.open(LOGO_PATH).resize((300, 300), Image.Resampling.LANCZOS)
-    logo = ImageTk.PhotoImage(logo_img)
-    tk.Label(splash, image=logo, bg=BG_COLOR).place(relx=0.5, rely=0.35, anchor="center")
-except Exception:
-    tk.Label(splash, text="Logo Not Found", font=("Arial", 20), bg=BG_COLOR).place(relx=0.5, rely=0.35, anchor="center")
-
-# ========= Screens & navigation =========
-page_history: list[str] = []
-forward_stack: list[str] = []
-
-def clear_root():
+def show_splash():
     for w in root.winfo_children():
         w.destroy()
 
-def show_dashboard(username: str):
-    clear_root()
-    page_history.clear(); forward_stack.clear()
+    splash = tk.Frame(root, bg=BG)
+    splash.pack(fill="both", expand=True)
 
-    main = tk.Frame(root, bg="white"); main.pack(fill="both", expand=True)
-    tk.Label(main, text="Welcome to YourQualityCheck", font=("Arial", 20, "bold"), bg="white").pack(pady=(20, 10))
+    # Title
+    tk.Label(splash, text="Welcome to YourQualityCheck", font=TITLE_FONT, bg=BG)\
+      .pack(pady=(30, 10))
 
-    buttons = tk.Frame(main, bg="white"); buttons.pack(expand=True)
-    tiles = [
-        ("👤", "Profile",       lambda: open_section("profile", username)),
-        ("📦", "Inventory",     lambda: open_section("inventory", username)),
-        ("📷", "Camera Feed",   lambda: open_section("camera", username)),
-        ("🖼", "Photo Gallery", lambda: open_section("gallery", username)),
-        ("🚪", "Logout",        do_logout),
-    ]
-    for col, (emoji, label, cmd) in enumerate(tiles):
-        tk.Button(buttons, text=emoji, font=("Arial", 30), width=6, height=2, bg="#eeeeee", command=cmd)\
-            .grid(row=0, column=col, padx=20, pady=20)
-        tk.Label(buttons, text=label, font=("Arial", 13, "bold"), bg="white").grid(row=1, column=col)
-
-def open_section(section: str, username: str):
-    if not page_history or page_history[-1] != section:
-        page_history.append(section); forward_stack.clear()
-    render_section(section, username)
-
-def do_logout():
-    page_history.clear(); forward_stack.clear()
-    clear_root(); show_login()
-
-def render_section(section: str, username: str):
-    clear_root()
-    sidebar = tk.Frame(root, bg="#bdbdbd", width=170); sidebar.pack(side="left", fill="y"); sidebar.pack_propagate(False)
-    tk.Button(sidebar, text="← Dashboard", font=("Arial", 12), bg="#eeeeee", anchor="w",
-              command=lambda: show_dashboard(username)).pack(fill="x", pady=(5, 2))
-
-    def sidebtn(key, label):
-        tk.Button(sidebar, text=label, font=("Arial", 12, "bold" if section == key else "normal"),
-                  bg="#eeeeee" if section == key else "#bdbdbd", anchor="w",
-                  relief="flat", padx=10, pady=10,
-                  command=(do_logout if key == "logout" else (lambda k=key: render_section(k, username))))\
-            .pack(fill="x", pady=1)
-
-    sidebtn("profile",  "👤 Profile")
-    sidebtn("inventory","📦 Inventory")
-    sidebtn("camera",   "📷 Camera Feed")
-    sidebtn("gallery",  "🖼 Photo Gallery")
-    sidebtn("logout",   "🚪 Logout")
-
-    content = tk.Frame(root, bg="white"); content.pack(side="right", expand=True, fill="both")
-    titles = {"profile":"👤 Profile","inventory":"📦 Model Management","camera":"📷 Camera Feed","gallery":"🖼 Dataset Tools"}
-    tk.Label(content, text=titles.get(section, "Section"), font=("Arial", 18, "bold"), bg="white").pack(pady=(20,5))
-
-    if section == "profile":
-        tk.Label(content, text=f"User: {username}", font=("Arial", 14), bg="white").pack(pady=20)
-
-    elif section == "inventory":
-        tk.Button(content, text="📚 Train Model", bg="#90caf9", font=("Arial", 14),
-                  command=lambda: run_script_by_key("train")).pack(pady=10)
-        tk.Button(content, text="⚙ Automate Annotations", bg="#a5d6a7", font=("Arial", 14),
-                  command=lambda: run_script_by_key("auto")).pack(pady=10)
-        tk.Button(content, text="📂 Convert XML→YOLO", bg="#fbc02d", font=("Arial", 14),
-                  command=lambda: run_script_by_key("xml2yolo")).pack(pady=10)
-
-    elif section == "camera":
-        tk.Button(content, text="📡 Run Inference", bg="#90caf9", font=("Arial", 14),
-                  command=lambda: run_script_by_key("execute")).pack(pady=10)
-        tk.Button(content, text="🌐 Open Live Feed (URL)", bg="#a5d6a7", font=("Arial", 14),
-                  command=start_live_feed_then_open).pack(pady=10)
-
-    elif section == "gallery":
-        tk.Button(content, text="🔍 Visualise Single File", bg="#ce93d8", font=("Arial", 14),
-                  command=lambda: run_script_by_key("viz_one")).pack(pady=10)
-        tk.Button(content, text="🖼 Batch Visualise", bg="#ffab91", font=("Arial", 14),
-                  command=lambda: run_script_by_key("viz_batch")).pack(pady=10)
-
-# ========= Login screen (with Remember-me, Forgot-password & Enter-to-login) =========
-def show_login():
-    clear_root()
-    login = tk.Frame(root, bg=BG_COLOR); login.pack(pady=20)
-
-    # logo
+    # Logo big
     try:
-        limg = Image.open(LOGO_PATH).resize((150, 150), Image.Resampling.LANCZOS)
-        lphoto = ImageTk.PhotoImage(limg)
-        tk.Label(login, image=lphoto, bg=BG_COLOR).grid(row=0, column=0, columnspan=3, pady=(10,20))
-        login.image = lphoto  # prevent GC
+        img = Image.open(LOGO_PATH).resize((320, 320), Image.Resampling.LANCZOS)
+        logo_img = ImageTk.PhotoImage(img)
+        logo_lbl = tk.Label(splash, image=logo_img, bg=BG)
+        logo_lbl.image = logo_img  # keep ref
+        logo_lbl.pack(pady=10)
+        tk.Label(splash, text="Sponsored by Triple - I", font=("Arial", 12), bg=BG).pack()
     except Exception:
-        tk.Label(login, text="Logo", bg=BG_COLOR, font=("Arial",14)).grid(row=0, column=0, columnspan=3, pady=(10,20))
+        tk.Label(splash, text="[Logo not found]", font=("Arial", 18), bg=BG).pack(pady=20)
 
-    tk.Label(login, text="User Name:", bg=BG_COLOR, font=("Arial", 12)).grid(row=1, column=0, padx=10, pady=6, sticky="e")
-    user_entry = tk.Entry(login, font=("Arial", 12), width=25, bg=ENTRY_BG); user_entry.grid(row=1, column=1, sticky="w", pady=6, columnspan=2)
+    root.after(1200, show_login)
 
-    tk.Label(login, text="Password:", bg=BG_COLOR, font=("Arial", 12)).grid(row=2, column=0, padx=10, pady=6, sticky="e")
-    pass_entry = tk.Entry(login, show="*", font=("Arial", 12), width=25, bg=ENTRY_BG); pass_entry.grid(row=2, column=1, sticky="w", pady=6, columnspan=2)
+# =============== LOGIN ===============
 
-    # Remember me
+def show_login():
+    for w in root.winfo_children():
+        w.destroy()
+
+    frame = tk.Frame(root, bg=BG)
+    frame.place(relx=0.5, rely=0.5, anchor="center")  # centered
+
+    # Logo above login
+    try:
+        img = Image.open(LOGO_PATH).resize((180, 180), Image.Resampling.LANCZOS)
+        login_logo = ImageTk.PhotoImage(img)
+        logo_lbl = tk.Label(frame, image=login_logo, bg=BG)
+        logo_lbl.image = login_logo
+        logo_lbl.grid(row=0, column=0, columnspan=3, pady=(0, 15))
+        tk.Label(frame, text="Sponsored by Triple - I", bg=BG, font=("Arial", 11)).grid(row=1, column=0, columnspan=3, pady=(0, 15))
+    except Exception:
+        tk.Label(frame, text="QuAck", font=("Arial", 22, "bold"), bg=BG).grid(row=0, column=0, columnspan=3, pady=(0, 15))
+
+    # Inputs (larger)
+    tk.Label(frame, text="User Name:", bg=BG, font=("Arial", 16)).grid(row=2, column=0, padx=12, pady=8, sticky="e")
+    user_entry = tk.Entry(frame, font=("Arial", 16), width=28)
+    user_entry.grid(row=2, column=1, columnspan=2, pady=8, sticky="w")
+
+    tk.Label(frame, text="Password:", bg=BG, font=("Arial", 16)).grid(row=3, column=0, padx=12, pady=8, sticky="e")
+    pass_entry = tk.Entry(frame, font=("Arial", 16), width=28, show="*")
+    pass_entry.grid(row=3, column=1, columnspan=2, pady=8, sticky="w")
+
+    # Remember Me
     remember_var = tk.BooleanVar(value=False)
     if REMEMBER_FILE.exists():
         try:
@@ -223,25 +168,29 @@ def show_login():
         except Exception:
             pass
 
-    tk.Checkbutton(login, text="Remember Me", variable=remember_var, bg=BG_COLOR).grid(row=3, column=0, columnspan=3, pady=(0, 4))
+    def toggle_pw():
+        pass_entry.config(show="" if pass_entry.cget("show") == "*" else "*")
+        show_btn.config(text="Hide Password" if pass_entry.cget("show")=="" else "Show Password")
 
-    # Forgot password
-    def forgot_password(_=None):
+    show_btn = tk.Button(frame, text="Show Password", font=BTN_FONT, bg="#007ACC", fg="white", command=toggle_pw)
+    show_btn.grid(row=4, column=0, columnspan=3, pady=(6, 6))
+
+    tk.Checkbutton(frame, text="Remember Me", variable=remember_var, bg=BG, font=("Arial", 12)).grid(row=5, column=0, columnspan=3)
+
+    def forgot_pw(_=None):
         uname = user_entry.get().strip()
-        if uname in users:
-            messagebox.showinfo("Password Recovery", f"Password for {uname}: {users[uname]}")
+        if uname in USERS:
+            messagebox.showinfo("Password Recovery", f"Password for {uname}: {USERS[uname]}")
         else:
             messagebox.showerror("Error", "Enter a valid username first.")
+    fp = tk.Label(frame, text="Forgot Password?", fg="blue", cursor="hand2", bg=BG, font=("Arial", 12))
+    fp.grid(row=6, column=0, columnspan=3, pady=(0, 10))
+    fp.bind("<Button-1>", forgot_pw)
 
-    fp = tk.Label(login, text="Forgot Password?", fg="blue", cursor="hand2", bg=BG_COLOR, font=("Arial", 10))
-    fp.grid(row=4, column=0, columnspan=3, pady=(0, 10))
-    fp.bind("<Button-1>", forgot_password)
-
-    # Login
     def do_login(_evt=None):
         uname = user_entry.get().strip()
         pwd = pass_entry.get()
-        if uname in users and users[uname] == pwd:
+        if uname in USERS and USERS[uname] == pwd:
             if remember_var.get():
                 try: REMEMBER_FILE.write_text(uname, encoding="utf-8")
                 except Exception: pass
@@ -253,12 +202,127 @@ def show_login():
         else:
             messagebox.showerror("Access Denied", "Invalid username or password.")
 
-    # Enter-to-login support
-    login.bind_all("<Return>", do_login)
+    login_btn = tk.Button(frame, text="Login", font=("Arial", 18, "bold"), bg="#007ACC", fg="white",
+                          width=14, command=do_login)
+    login_btn.grid(row=7, column=0, columnspan=3, pady=(8, 4))
 
-    tk.Button(login, text="Login", command=do_login, font=("Arial", 12),
-              width=15, bg=BTN_COLOR, fg=BTN_TEXT_COLOR).grid(row=5, column=0, columnspan=3, pady=(0, 10))
+    # Enter-to-login
+    root.bind("<Return>", do_login)
+    user_entry.focus_set()
 
-# ========= Start app =========
-root.after(1200, show_login)  # short splash
+# =============== DASHBOARD & PAGES ===============
+
+def show_dashboard(username: str):
+    # clear window
+    for w in root.winfo_children():
+        w.destroy()
+
+    main = tk.Frame(root, bg="white")
+    main.pack(fill="both", expand=True)
+
+    # Title + Logo
+    tk.Label(main, text="Welcome to YourQualityCheck", font=TITLE_FONT, bg="white")\
+      .pack(pady=(18, 8))
+    try:
+        img = Image.open(LOGO_PATH).resize((220, 220), Image.Resampling.LANCZOS)
+        dlogo = ImageTk.PhotoImage(img)
+        lab = tk.Label(main, image=dlogo, bg="white")
+        lab.image = dlogo
+        lab.pack()
+        tk.Label(main, text="Sponsored by Triple - I", bg="white", font=("Arial", 12)).pack(pady=(4, 30))
+    except Exception:
+        tk.Label(main, text="QuAck", font=("Arial", 22, "bold"), bg="white").pack(pady=(4, 30))
+
+    tiles_frame = tk.Frame(main, bg="white")
+    tiles_frame.pack()
+
+    def goto(section):
+        render_section(section, username)
+
+    # dashboard tiles (same look everywhere)
+    tiles = [
+        ("Profile",       "👤",  COLORS["grey"],  lambda: goto("profile")),
+        ("Inventory",     "🧊",  COLORS["blue"],  lambda: goto("inventory")),
+        ("Camera Feed",   "📷",  COLORS["peach"], lambda: goto("camera")),
+        ("Photo Gallery", "🖼",  COLORS["green"], lambda: goto("gallery")),
+        ("Logout",        "📱",  COLORS["pink"],  logout),
+    ]
+
+    for i, (title, icon, color, cmd) in enumerate(tiles):
+        t = make_tile(tiles_frame, title, icon, color, cmd)
+        t.grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
+
+def logout():
+    show_login()
+
+def render_section(section: str, username: str):
+    for w in root.winfo_children():
+        w.destroy()
+
+    # Sidebar (bigger)
+    sidebar = tk.Frame(root, bg="#bdbdbd", width=190)
+    sidebar.pack(side="left", fill="y")
+    sidebar.pack_propagate(False)
+
+    def sbtn(text, active, cmd):
+        tk.Button(sidebar, text=text, font=("Arial", 14, "bold" if active else "normal"),
+                  bg="#eeeeee" if active else "#bdbdbd", relief="flat",
+                  anchor="w", padx=14, pady=12, command=cmd).pack(fill="x", pady=2)
+
+    sbtn("← Dashboard", False, lambda: show_dashboard(username))
+    sbtn("👤 Profile",   section=="profile",   lambda: render_section("profile", username))
+    sbtn("📦 Inventory", section=="inventory", lambda: render_section("inventory", username))
+    sbtn("📷 Camera",    section=="camera",    lambda: render_section("camera", username))
+    sbtn("🖼 Gallery",   section=="gallery",   lambda: render_section("gallery", username))
+    sbtn("🚪 Logout",    False,                logout)
+
+    # Content
+    content = tk.Frame(root, bg="white")
+    content.pack(side="right", expand=True, fill="both")
+
+    titles = {
+        "profile":   "👤 Profile",
+        "inventory": "📦 Model Management",
+        "camera":    "📷 Camera Feed",
+        "gallery":   "🖼 Dataset Tools",
+    }
+    tk.Label(content, text=titles.get(section, "Section"), font=SECTION_FONT, bg="white")\
+      .pack(pady=(18, 10))
+
+    tiles_frame = tk.Frame(content, bg="white")
+    tiles_frame.pack(pady=10)
+
+    if section == "profile":
+        # Just a big "Back to Dashboard" tile & user label to keep layout consistent
+        tk.Label(content, text=f"User: {username}", font=("Arial", 16), bg="white").pack(pady=(0, 8))
+        make_tile(tiles_frame, "Back to Dashboard", "🏠", COLORS["grey"],
+                  lambda: show_dashboard(username)).grid(row=0, column=0, padx=TILE_PADX, pady=TILE_PADY)
+
+    elif section == "inventory":
+        tiles = [
+            ("Train Model",          "📚", COLORS["blue"],  lambda: run_script(SCRIPT_PATHS["train"])),
+            ("Automate Annotations", "⚙", COLORS["green"], lambda: run_script(SCRIPT_PATHS["auto"])),
+            ("Convert XML→YOLO",     "📂", COLORS["peach"], lambda: run_script(SCRIPT_PATHS["xml2yolo"])),
+        ]
+        for i, (title, icon, color, cmd) in enumerate(tiles):
+            make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
+
+    elif section == "camera":
+        tiles = [
+            ("Run Inference",   "🎯", COLORS["blue"],  lambda: run_script(SCRIPT_PATHS["execute"])),
+            ("Open Live Feed",  "🌐", COLORS["peach"], open_live_feed),
+        ]
+        for i, (title, icon, color, cmd) in enumerate(tiles):
+            make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
+
+    elif section == "gallery":
+        tiles = [
+            ("Visualise (Single)", "🔍", COLORS["green"], lambda: run_script(SCRIPT_PATHS["viz_one"])),
+            ("Batch Visualise",    "🖼", COLORS["pink"],  lambda: run_script(SCRIPT_PATHS["viz_batch"])),
+        ]
+        for i, (title, icon, color, cmd) in enumerate(tiles):
+            make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
+
+# =============== STARTUP ===============
+show_splash()
 root.mainloop()
