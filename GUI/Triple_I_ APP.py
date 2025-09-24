@@ -14,12 +14,12 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parent
 
 # Absolute script paths (clean names as requested)
 SCRIPT_PATHS = {
-    "execute":   PROJECT_ROOT / "execute.py",
-    "train":     PROJECT_ROOT / "train.py",
-    "auto":      PROJECT_ROOT / "VideoProcessing" / "AutomateKdenlive.py",
-    "xml2yolo":  PROJECT_ROOT / "VideoProcessing" / "KdenliveXMLtoYOLOv8.py",
-    "viz_one":   PROJECT_ROOT / "VideoProcessing" / "visualiseTXT.py",
-    "viz_batch": PROJECT_ROOT / "VideoProcessing" / "BatchVisualiseTXTBB.py",
+    "execute":   r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\execute.py",
+    "train":     r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\train.py",
+    "auto":      r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\AutomateKdenlive.py",
+    "xml2yolo":  r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\KdenliveXMLtoYOLOv8.py",
+    "viz_one":   r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\visualiseTXT.py",
+    "viz_batch": r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\BatchVisualiseTXTBB.py",
 }
 
 # -------------------
@@ -68,7 +68,7 @@ splash_frame = tk.Frame(root, bg=BG_COLOR)
 splash_frame.pack(fill="both", expand=True)
 
 # Update to your actual logo path if needed
-logo_path = r"C:\Users\joypa\Downloads\logo_final.jpg"
+logo_path = r"C:\Users\Group8\Downloads\logo_final.jpg"
 
 try:
     logo_img = Image.open(logo_path).resize((300, 300), Image.Resampling.LANCZOS)
