@@ -1,25 +1,27 @@
-# Triple_I_app.py
+# Triple_I_app.py  — final
 
 import tkinter as tk
-from PIL import Image, ImageTk
 import tkinter.messagebox as messagebox
-import webbrowser, subprocess, sys, time
+import tkinter.font as tkfont
+from PIL import Image, ImageTk
+import webbrowser, subprocess, sys
 from pathlib import Path
 
-# =============== CONFIG ===============
+# ===================== LOOK & FEEL =====================
 
-# App look & feel
 BG = "#ffffff"
-TITLE_FONT = ("Arial", 26, "bold")
-SECTION_FONT = ("Arial", 22, "bold")
-ICON_FONT = ("Arial", 28, "bold")
-LABEL_FONT = ("Arial", 13, "bold")
-BTN_FONT = ("Arial", 14, "bold")
 
-TILE_W, TILE_H = 170, 150  # tile size in px
-TILE_PADX, TILE_PADY = 30, 18
+# Enlarged, clean typography
+TITLE_FONT     = ("Arial", 28, "bold")
+SECTION_FONT   = ("Arial", 24, "bold")
+LABEL_FONT     = ("Arial", 14, "bold")
+BTN_FONT       = ("Arial", 16, "bold")
 
-# Tile colors (matching your original palette)
+# Tile sizing (big icons everywhere)
+TILE_W, TILE_H = 200, 180
+TILE_PADX, TILE_PADY = 28, 20
+
+# Original palette
 COLORS = {
     "grey":   "#e0e0e0",
     "blue":   "#e8f5ff",
@@ -28,13 +30,14 @@ COLORS = {
     "pink":   "#ffcdd2",
 }
 
-# Logo (used on splash & dashboard). Change if needed.
+# Logo file (used on splash, login, dashboard)
 LOGO_PATH = r"C:\Users\Group8\Downloads\logo_final.jpg"
 
-# Live feed URL
+# Live feed URL (browser)
 LIVE_FEED_URL = "http://localhost:5000/video_feed"
 
-# Hard-wired tool paths (as requested)
+# ===================== SCRIPT PATHS =====================
+
 SCRIPT_PATHS = {
     "execute":   Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\execute.py"),
     "train":     Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\train.py"),
@@ -42,9 +45,12 @@ SCRIPT_PATHS = {
     "xml2yolo":  Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\KdenliveXMLtoYOLOv8.py"),
     "viz_one":   Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\visualiseTXT.py"),
     "viz_batch": Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\BatchVisualiseTXTBB.py"),
+    # Optional: Start the local stream server if you have it
+    "stream":    Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Video_Feed.py"),
 }
 
-# Simple user store
+# ===================== AUTH =====================
+
 USERS = {
     "Joy Pasala": "7452408",
     "Jonathan Walsh": "pass1",
@@ -53,13 +59,14 @@ USERS = {
     "Jerome Eid": "pass4",
     "Jason Watson": "7678721",
 }
-
 REMEMBER_FILE = Path(__file__).resolve().parent / "remember_me.txt"
 
-# =============== UTILITIES ===============
+# ===================== HELPERS =====================
 
 def run_script(path: Path):
-    """Launch a Python script in another process with its folder as CWD."""
+    """Launch a Python script with its own working directory."""
+    if not isinstance(path, Path):
+        path = Path(path)
     if not path.exists():
         messagebox.showerror("Error", f"File not found:\n{path}")
         return
@@ -74,27 +81,27 @@ def open_live_feed():
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open live feed URL:\n{e}")
 
-def make_tile(parent, title, icon_text, bg_color, command):
-    """Create a colored square tile with an icon-like text; click anywhere to trigger command."""
-    container = tk.Frame(parent, bg="white")
-    tile = tk.Frame(container, bg=bg_color, width=TILE_W, height=TILE_H,
-                    highlightthickness=1, highlightbackground="#9e9e9e")
-    tile.pack_propagate(False)
-    tile.pack(padx=6, pady=(0, 6))
+def start_stream_if_available():
+    stream_path = SCRIPT_PATHS.get("stream")
+    if stream_path and stream_path.exists():
+        run_script(stream_path)
+    else:
+        messagebox.showinfo("Stream", "Stream script not found. Opening live feed URL instead.")
+        open_live_feed()
 
-    icon_lbl = tk.Label(tile, text=icon_text, font=ICON_FONT, bg=bg_color, fg="black")
-    icon_lbl.pack(expand=True)
+def hex_shift(hex_color: str, pct: float) -> str:
+    """Lighten/darken a hex color by pct (-0.4..+0.4)."""
+    hex_color = hex_color.lstrip("#")
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    def clamp(x): return max(0, min(255, int(x)))
+    r = clamp(r + pct*255)
+    g = clamp(g + pct*255)
+    b = clamp(b + pct*255)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
-    # Click behavior on tile and icon
-    for widget in (tile, icon_lbl):
-        widget.bind("<Button-1>", lambda _e: command())
-
-    # Label
-    tk.Label(container, text=title, font=LABEL_FONT, bg="white").pack()
-
-    return container
-
-# =============== APP ROOT ===============
+# ===================== ROOT =====================
 
 root = tk.Tk()
 root.title("YourQualityCheck")
@@ -102,53 +109,94 @@ root.state("zoomed")
 root.configure(bg=BG)
 root.resizable(False, False)
 
-# =============== SPLASH ===============
+# Fonts for hover transitions
+_icon_normal = tkfont.Font(family="Arial", size=36, weight="normal")
+_icon_bold   = tkfont.Font(family="Arial", size=36, weight="bold")
+
+# ===================== TILE FACTORY (with hover) =====================
+
+def make_tile(parent, title, icon_text, bg_color, command):
+    """
+    A large colored tile with hover effects (bold + gentle color shift),
+    used consistently across dashboard and inner pages.
+    """
+    container = tk.Frame(parent, bg="white")
+
+    tile = tk.Frame(container, bg=bg_color, width=TILE_W, height=TILE_H,
+                    highlightthickness=1, highlightbackground="#b0b0b0", relief="flat", bd=2)
+    tile.pack_propagate(False)
+    tile.pack(padx=8, pady=(0, 8))
+
+    icon_lbl = tk.Label(tile, text=icon_text, bg=bg_color, fg="black", font=_icon_normal)
+    icon_lbl.pack(expand=True)
+
+    title_lbl = tk.Label(container, text=title, font=LABEL_FONT, bg="white")
+    title_lbl.pack()
+
+    hover_bg = hex_shift(bg_color, -0.06)  # subtle darken
+
+    def on_enter(_):
+        tile.configure(bg=hover_bg, relief="raised")
+        icon_lbl.configure(bg=hover_bg, font=_icon_bold)
+
+    def on_leave(_):
+        tile.configure(bg=bg_color, relief="flat")
+        icon_lbl.configure(bg=bg_color, font=_icon_normal)
+
+    def on_click(_):
+        command()
+
+    for w in (tile, icon_lbl):
+        w.bind("<Enter>", on_enter)
+        w.bind("<Leave>", on_leave)
+        w.bind("<Button-1>", on_click)
+
+    return container
+
+# ===================== SCREENS =====================
 
 def show_splash():
     for w in root.winfo_children():
         w.destroy()
-
     splash = tk.Frame(root, bg=BG)
     splash.pack(fill="both", expand=True)
 
-    # Title
     tk.Label(splash, text="Welcome to YourQualityCheck", font=TITLE_FONT, bg=BG)\
-      .pack(pady=(30, 10))
+      .pack(pady=(20, 10))
 
-    # Logo big
+    # Big logo
     try:
         img = Image.open(LOGO_PATH).resize((320, 320), Image.Resampling.LANCZOS)
         logo_img = ImageTk.PhotoImage(img)
-        logo_lbl = tk.Label(splash, image=logo_img, bg=BG)
-        logo_lbl.image = logo_img  # keep ref
-        logo_lbl.pack(pady=10)
+        lbl = tk.Label(splash, image=logo_img, bg=BG)
+        lbl.image = logo_img
+        lbl.pack(pady=(0, 4))
         tk.Label(splash, text="Sponsored by Triple - I", font=("Arial", 12), bg=BG).pack()
     except Exception:
         tk.Label(splash, text="[Logo not found]", font=("Arial", 18), bg=BG).pack(pady=20)
 
-    root.after(1200, show_login)
-
-# =============== LOGIN ===============
+    root.after(1000, show_login)
 
 def show_login():
     for w in root.winfo_children():
         w.destroy()
 
     frame = tk.Frame(root, bg=BG)
-    frame.place(relx=0.5, rely=0.5, anchor="center")  # centered
+    # Slightly higher than center (as requested)
+    frame.place(relx=0.5, rely=0.42, anchor="center")
 
-    # Logo above login
+    # Logo a bit higher
     try:
-        img = Image.open(LOGO_PATH).resize((180, 180), Image.Resampling.LANCZOS)
+        img = Image.open(LOGO_PATH).resize((170, 170), Image.Resampling.LANCZOS)
         login_logo = ImageTk.PhotoImage(img)
-        logo_lbl = tk.Label(frame, image=login_logo, bg=BG)
-        logo_lbl.image = login_logo
-        logo_lbl.grid(row=0, column=0, columnspan=3, pady=(0, 15))
-        tk.Label(frame, text="Sponsored by Triple - I", bg=BG, font=("Arial", 11)).grid(row=1, column=0, columnspan=3, pady=(0, 15))
+        l = tk.Label(frame, image=login_logo, bg=BG)
+        l.image = login_logo
+        l.grid(row=0, column=0, columnspan=3, pady=(0, 8))
+        tk.Label(frame, text="Sponsored by Triple - I", bg=BG, font=("Arial", 11)).grid(row=1, column=0, columnspan=3, pady=(0, 12))
     except Exception:
-        tk.Label(frame, text="QuAck", font=("Arial", 22, "bold"), bg=BG).grid(row=0, column=0, columnspan=3, pady=(0, 15))
+        tk.Label(frame, text="QuAck", font=("Arial", 22, "bold"), bg=BG).grid(row=0, column=0, columnspan=3, pady=(0, 12))
 
-    # Inputs (larger)
+    # Inputs
     tk.Label(frame, text="User Name:", bg=BG, font=("Arial", 16)).grid(row=2, column=0, padx=12, pady=8, sticky="e")
     user_entry = tk.Entry(frame, font=("Arial", 16), width=28)
     user_entry.grid(row=2, column=1, columnspan=2, pady=8, sticky="w")
@@ -157,7 +205,6 @@ def show_login():
     pass_entry = tk.Entry(frame, font=("Arial", 16), width=28, show="*")
     pass_entry.grid(row=3, column=1, columnspan=2, pady=8, sticky="w")
 
-    # Remember Me
     remember_var = tk.BooleanVar(value=False)
     if REMEMBER_FILE.exists():
         try:
@@ -173,7 +220,7 @@ def show_login():
         show_btn.config(text="Hide Password" if pass_entry.cget("show")=="" else "Show Password")
 
     show_btn = tk.Button(frame, text="Show Password", font=BTN_FONT, bg="#007ACC", fg="white", command=toggle_pw)
-    show_btn.grid(row=4, column=0, columnspan=3, pady=(6, 6))
+    show_btn.grid(row=4, column=0, columnspan=3, pady=(6, 4))
 
     tk.Checkbutton(frame, text="Remember Me", variable=remember_var, bg=BG, font=("Arial", 12)).grid(row=5, column=0, columnspan=3)
 
@@ -184,7 +231,7 @@ def show_login():
         else:
             messagebox.showerror("Error", "Enter a valid username first.")
     fp = tk.Label(frame, text="Forgot Password?", fg="blue", cursor="hand2", bg=BG, font=("Arial", 12))
-    fp.grid(row=6, column=0, columnspan=3, pady=(0, 10))
+    fp.grid(row=6, column=0, columnspan=3, pady=(0, 8))
     fp.bind("<Button-1>", forgot_pw)
 
     def do_login(_evt=None):
@@ -202,55 +249,43 @@ def show_login():
         else:
             messagebox.showerror("Access Denied", "Invalid username or password.")
 
-    login_btn = tk.Button(frame, text="Login", font=("Arial", 18, "bold"), bg="#007ACC", fg="white",
-                          width=14, command=do_login)
+    login_btn = tk.Button(frame, text="Login", font=("Arial", 18, "bold"),
+                          bg="#007ACC", fg="white", width=14, command=do_login)
     login_btn.grid(row=7, column=0, columnspan=3, pady=(8, 4))
 
-    # Enter-to-login
     root.bind("<Return>", do_login)
     user_entry.focus_set()
 
-# =============== DASHBOARD & PAGES ===============
-
 def show_dashboard(username: str):
-    # clear window
     for w in root.winfo_children():
         w.destroy()
 
     main = tk.Frame(root, bg="white")
     main.pack(fill="both", expand=True)
 
-    # Title + Logo
-    tk.Label(main, text="Welcome to YourQualityCheck", font=TITLE_FONT, bg="white")\
-      .pack(pady=(18, 8))
+    tk.Label(main, text="Welcome to YourQualityCheck", font=TITLE_FONT, bg="white").pack(pady=(18, 6))
     try:
         img = Image.open(LOGO_PATH).resize((220, 220), Image.Resampling.LANCZOS)
-        dlogo = ImageTk.PhotoImage(img)
-        lab = tk.Label(main, image=dlogo, bg="white")
-        lab.image = dlogo
+        logo = ImageTk.PhotoImage(img)
+        lab = tk.Label(main, image=logo, bg="white")
+        lab.image = logo
         lab.pack()
-        tk.Label(main, text="Sponsored by Triple - I", bg="white", font=("Arial", 12)).pack(pady=(4, 30))
+        tk.Label(main, text="Sponsored by Triple - I", bg="white", font=("Arial", 12)).pack(pady=(2, 26))
     except Exception:
-        tk.Label(main, text="QuAck", font=("Arial", 22, "bold"), bg="white").pack(pady=(4, 30))
+        tk.Label(main, text="QuAck", font=("Arial", 22, "bold"), bg="white").pack(pady=(2, 26))
 
     tiles_frame = tk.Frame(main, bg="white")
     tiles_frame.pack()
 
-    def goto(section):
-        render_section(section, username)
-
-    # dashboard tiles (same look everywhere)
     tiles = [
-        ("Profile",       "👤",  COLORS["grey"],  lambda: goto("profile")),
-        ("Inventory",     "🧊",  COLORS["blue"],  lambda: goto("inventory")),
-        ("Camera Feed",   "📷",  COLORS["peach"], lambda: goto("camera")),
-        ("Photo Gallery", "🖼",  COLORS["green"], lambda: goto("gallery")),
-        ("Logout",        "📱",  COLORS["pink"],  logout),
+        ("Profile",       "👤", COLORS["grey"],  lambda: render_section("profile", username)),
+        ("Inventory",     "🧊", COLORS["blue"],  lambda: render_section("inventory", username)),
+        ("Camera Feed",   "📷", COLORS["peach"], lambda: render_section("camera", username)),
+        ("Photo Gallery", "🖼", COLORS["green"], lambda: render_section("gallery", username)),
+        ("Logout",        "📱", COLORS["pink"],  logout),
     ]
-
     for i, (title, icon, color, cmd) in enumerate(tiles):
-        t = make_tile(tiles_frame, title, icon, color, cmd)
-        t.grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
+        make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
 
 def logout():
     show_login()
@@ -260,7 +295,7 @@ def render_section(section: str, username: str):
         w.destroy()
 
     # Sidebar (bigger)
-    sidebar = tk.Frame(root, bg="#bdbdbd", width=190)
+    sidebar = tk.Frame(root, bg="#bdbdbd", width=200)
     sidebar.pack(side="left", fill="y")
     sidebar.pack_propagate(False)
 
@@ -286,14 +321,12 @@ def render_section(section: str, username: str):
         "camera":    "📷 Camera Feed",
         "gallery":   "🖼 Dataset Tools",
     }
-    tk.Label(content, text=titles.get(section, "Section"), font=SECTION_FONT, bg="white")\
-      .pack(pady=(18, 10))
+    tk.Label(content, text=titles.get(section, "Section"), font=SECTION_FONT, bg="white").pack(pady=(18, 10))
 
     tiles_frame = tk.Frame(content, bg="white")
     tiles_frame.pack(pady=10)
 
     if section == "profile":
-        # Just a big "Back to Dashboard" tile & user label to keep layout consistent
         tk.Label(content, text=f"User: {username}", font=("Arial", 16), bg="white").pack(pady=(0, 8))
         make_tile(tiles_frame, "Back to Dashboard", "🏠", COLORS["grey"],
                   lambda: show_dashboard(username)).grid(row=0, column=0, padx=TILE_PADX, pady=TILE_PADY)
@@ -309,8 +342,9 @@ def render_section(section: str, username: str):
 
     elif section == "camera":
         tiles = [
-            ("Run Inference",   "🎯", COLORS["blue"],  lambda: run_script(SCRIPT_PATHS["execute"])),
-            ("Open Live Feed",  "🌐", COLORS["peach"], open_live_feed),
+            ("Run Inference",  "🎯", COLORS["blue"],  lambda: run_script(SCRIPT_PATHS["execute"])),
+            ("Start Stream",   "▶️", COLORS["green"], start_stream_if_available),
+            ("Open Live Feed", "🌐", COLORS["peach"], open_live_feed),
         ]
         for i, (title, icon, color, cmd) in enumerate(tiles):
             make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
@@ -323,6 +357,7 @@ def render_section(section: str, username: str):
         for i, (title, icon, color, cmd) in enumerate(tiles):
             make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
 
-# =============== STARTUP ===============
+# ===================== START =====================
+
 show_splash()
 root.mainloop()
