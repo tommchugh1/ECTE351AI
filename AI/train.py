@@ -4,7 +4,6 @@ if __name__ == '__main__':
     import torch
     import intel_extension_for_pytorch as ipex
     import os
-    import shutil
 
     # Check for XPU
     if not torch.xpu.is_available():
@@ -21,18 +20,19 @@ if __name__ == '__main__':
     data_yaml = 'C:\\Users\\Group8\\Desktop' + '\\' + 'dataset/data.yaml'  # data.yaml directory
     project_dir = header + '\\' + 'RUNS/train'       # Directory to save training results
     experiment_name = 'bolt_training'                # Name for this training run
-    model_path = header + '\\' + 'yolov8n.pt'        # Directory for model to be saved
+    model_path = header + '\\' + 'yolov8n.yaml'      # Directory for model to be saved
 
     # Load yolov8 model
-    retrained = YOLO(model_path)
+    #retrained = YOLO(model_path)
+    retrained = YOLO('yolov8n.yaml')
     retrained.model.to(torch.device("cpu"))
     print("Model loaded on CPU")
 
     # Verify paths
-    if not os.path.exists(data_yaml):
-        raise FileNotFoundError("data_yaml file not found.")
-    if not os.path.exists(model_path):
-        raise FileNotFoundError("Model file not found.")
+    #if not os.path.exists(data_yaml):
+    #    raise FileNotFoundError("data_yaml file not found.")
+    #if not os.path.exists(model_path):
+    #    raise FileNotFoundError("Model file not found.")
 
     # Move model to XPU
     try:
@@ -81,15 +81,7 @@ if __name__ == '__main__':
         exit(1)
 
 
-    # Export the model to OpenVINO format
-    try:
-        retrained.export(format='openvino', imgsz=640, device=torch.device('xpu:0'))
-        print("Model exported to OpenVINO format")
-    except Exception as e:
-        print(f"Export to OpenVINO failed: {str(e)}")
-
-    # Move exported model so run.py can access
-    source = header + '\\' + 'yolov8n_openvino_model'
-    destination = header + '\\' + 'RUNS/train/bolt_training/'
-    shutil.move(source,destination)
-    print("Model relocated")
+# Export the trained model to OpenVINO format
+    retrained_model_path = os.path.join(header, "RUNS", "train", "bolt_training", "weights", "best.pt")
+    model = YOLO(retrained_model_path)
+    model.export(format="openvino", imgsz=640)

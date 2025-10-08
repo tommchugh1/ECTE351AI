@@ -1,6 +1,6 @@
-description: Ultralytics best model trained on C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\dataset/data.yaml
+description: Ultralytics YOLOv8n model trained on C:\Users\Group8\Desktop\dataset/data.yaml
 author: Ultralytics
-date: '2025-09-24T12:20:37.398646'
+date: '2025-10-02T23:02:06.548590'
 version: 8.3.203
 license: AGPL-3.0 License (https://ultralytics.com/license)
 docs: https://docs.ultralytics.com

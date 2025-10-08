@@ -1,7 +1,7 @@
 task: detect
 mode: train
-model: C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\yolov8n.pt
-data: C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\dataset/data.yaml
+model: yolov8n.yaml
+data: C:\Users\Group8\Desktop\dataset/data.yaml
 epochs: 100
 time: null
 patience: 50

@@ -53,7 +53,7 @@ class FullViewVideoRecorderGUI:
         self.cap = None
         self.out = None
         self.is_recording = False
-        self.video_folder = r"C:\Users\joypa\Pictures\Live Video"
+        self.video_folder = r"C:\Users\Group8\Pictures"
         os.makedirs(self.video_folder, exist_ok=True)
         self.out_path = os.path.join(self.video_folder, "live_recording.mp4")
 
