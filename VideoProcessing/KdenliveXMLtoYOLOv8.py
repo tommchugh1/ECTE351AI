@@ -1,216 +1,226 @@
 import xml.etree.ElementTree as ET
 import os
 import re
-import yaml
-
-# Project Summary (YOLOv8 Annotation Conversion from Kdenlive XML)
-# 1. Parsed a `.kdenlive` XML project to extract object annotations tied to video frames.
-# 2. Interpolated bounding boxes across keyframes for smooth, frame-accurate labels.
-# 3. Converted boxes to YOLOv8 format: `class_id x_center y_center width height`.
-# 4. Matched frame numbers in `ImgSeq_XXXXX.png` to corresponding interpolated annotations.
-# 5. Wrote each frame's annotations to `.txt` files in a `labels/` directory.
-# 6. Ensured consistent inclusion of all class IDs across all frames, even if missing keyframes.
-# 7. Ignored invalid or background entries (e.g., `producer0`, `black`).
-# 8. Created `data.yaml` dynamically using `<clipname>` or fallback `<resource>` names.
-# 9. Ensured proper YAML formatting using bracketed list style (`names: ['a', 'b', 'c']`).
-# 10. Pipeline output is YOLOv8-ready for model training or validation.
-# More info at https://roboflow.com/formats/yolov8-pytorch-txt and https://docs.ultralytics.com/usage/simple-utilities/#ultralytics-sweep-annotation 
 
 # === CONFIG ===
 input_xml = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\InputNormalOutputFiltered.kdenlive"
-image_folder = r"C:\Users\Group8\Videos\BoundingBoxOutput"
-output_yaml = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\dataset\data.yaml"
-output_label_folder = os.path.join(image_folder, "labels")  # Save .txt here
-image_width = 1280
-image_height = 720
-frame_rate = 25  # Adjust if different
-
-# === CLASS MAPPING ===
-producer_class_map = {
-    "producer1": 0,  # Bent
-    "producer2": 1,  # Bent and Dethreaded
-    "producer3": 2,  # Dethreaded
-    "producer4": 3,  # Normal
-}
+image_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\250916 1600"
+output_label_folder = os.path.join(image_folder, "labels")
+image_width = 1920
+image_height = 1080
+frame_rate = 25
 
 os.makedirs(output_label_folder, exist_ok=True)
 
-def timecode_to_seconds(timecode: str) -> float:
-    """Convert HH:MM:SS.mmm to total seconds as float."""
-    match = re.match(r"(\d+):(\d+):(\d+).(\d+)", timecode)
-    if not match:
-        return -1.0
-    h, m, s, ms = map(int, match.groups())
-    return h * 3600 + m * 60 + s + ms / 1000
+# === UTILS ===
+
+def hhmmss_decimal_to_seconds(timecode: str) -> float:
+    """Convert HH:MM:SS.xxx format to seconds (float)."""
+    m = re.match(r"(\d+):(\d+):(\d+)\.(\d+)", timecode)
+    if not m:
+        raise ValueError(f"Cannot parse decimal timecode: '{timecode}'")
+    h, mm, ss, frac = m.groups()
+    return int(h) * 3600 + int(mm) * 60 + int(ss) + float("0." + frac)
+
+def hhmmss_frames_to_seconds(timecode: str) -> float:
+    """Convert HH:MM:SS:FF (frames) to seconds."""
+    m = re.match(r"(\d+):(\d+):(\d+):(\d+)", timecode)
+    if not m:
+        raise ValueError(f"Cannot parse frame-based timecode: '{timecode}'")
+    h, mm, ss, ff = map(int, m.groups())
+    return h * 3600 + mm * 60 + ss + (ff / frame_rate)
 
 def seconds_to_frame(seconds: float) -> int:
     """Convert seconds to frame index (1-based)."""
     return int(seconds * frame_rate) + 1
 
 def interpolate_bbox(t1, bbox1, t2, bbox2, t):
-    """Linear interpolation of bbox between t1 and t2 for time t."""
-    # bbox = (x, y, w, h)
+    """Linear interpolation between two bounding boxes."""
     if t2 == t1:
         return bbox1
     ratio = (t - t1) / (t2 - t1)
     return tuple(b1 + ratio * (b2 - b1) for b1, b2 in zip(bbox1, bbox2))
 
 def parse_bbox_string(bbox_str):
-    """Parse bbox string 'x y w h ...' and return (x,y,w,h) floats."""
-    parts = bbox_str.split()
+    """Convert 'x y w h ... rest' to (x, y, w, h) floats."""
+    parts = bbox_str.strip().split()
     if len(parts) < 4:
         return None
     try:
         x, y, w, h = map(float, parts[:4])
         return (x, y, w, h)
-    except ValueError:
+    except:
         return None
 
-# === Step 1: Parse XML to collect keyframe data per frame for each entry ===
-
-# Data structure:
-# frame_annotations[frame_idx] = list of (class_id, bbox) for that frame
-frame_annotations = {}
-image_files = sorted(f for f in os.listdir(image_folder) if re.match(r"ImgSeq_\d+\.png", f))
+# === LOAD XML ===
 
 tree = ET.parse(input_xml)
 root = tree.getroot()
 
-for entry in root.iter("entry"):
-    producer = entry.get("producer")
-    if producer not in producer_class_map:
-        continue
-    class_id = producer_class_map[producer]
+# === Find playlist blank lengths & tractor out times ===
 
-    for prop in entry.iter("property"):
-        if prop.get("name") == "rect":
-            rect_data = prop.text.strip()
-            keyframes = rect_data.split(";")
+playlist_blank_length = {}
+for playlist in root.findall(".//playlist"):
+    pid = playlist.get("id")
+    blank = playlist.find("blank")
+    if blank is not None and "length" in blank.attrib:
+        try:
+            playlist_blank_length[pid] = hhmmss_decimal_to_seconds(blank.attrib["length"])
+        except ValueError:
+            playlist_blank_length[pid] = 0.0
+    else:
+        playlist_blank_length[pid] = 0.0
 
-            kf_list = []
-            for kf in keyframes:
-                if "=" not in kf:
-                    continue
-                timecode, bbox_str = kf.split("=")
-                secs = timecode_to_seconds(timecode)
-                bbox = parse_bbox_string(bbox_str)
-                if secs >= 0 and bbox is not None:
-                    kf_list.append((secs, bbox))
-            if not kf_list:
+# Map playlist IDs to their tractor out time (XmlEnd)
+# We'll need to detect which tractor belongs to which playlist context
+tractor_out = {}
+for tractor in root.findall(".//tractor"):
+    out_tc = tractor.get("out")
+    if out_tc:
+        try:
+            out_sec = hhmmss_decimal_to_seconds(out_tc)
+        except ValueError:
+            out_sec = 0.0
+        # Now we need to find connected playlists
+        for track in tractor.findall("track"):
+            pid = track.get("producer")  # this is playlist ID in your setup
+            if pid:
+                # Multiple tracks might map — but keep the maximum out time
+                existing = tractor_out.get(pid, 0.0)
+                if out_sec > existing:
+                    tractor_out[pid] = out_sec
+
+# === Collect all frames we have images for ===
+
+image_files = sorted([f for f in os.listdir(image_folder) if re.match(r"ImgSeq_(\d+)\.png", f)])
+all_frames = [int(re.match(r"ImgSeq_(\d+)\.png", f).group(1)) for f in image_files]
+
+frame_annotations = {}
+
+# === Process each entry ===
+
+for playlist in root.findall(".//playlist"):
+    pid = playlist.get("id")
+    base_start = playlist_blank_length.get(pid, 0.0)
+
+    for entry in playlist.findall("entry"):
+        producer = entry.get("producer")
+        match = re.search(r"producer(\d+)", producer or "")
+        if not match:
+            continue
+        class_id = int(match.group(1)) - 1
+
+        # Entry in/out (clip-specific times)
+        in_tc = entry.get("in", "00:00:00.000")
+        out_tc = entry.get("out", None)
+        if out_tc is None:
+            continue  # if no out, skip
+
+        try:
+            entry_in_sec = hhmmss_decimal_to_seconds(in_tc)
+        except ValueError:
+            # May be frames format in some entries — you can adapt if needed
+            entry_in_sec = 0.0
+
+        try:
+            entry_out_sec = hhmmss_decimal_to_seconds(out_tc)
+        except ValueError:
+            # fallback
+            continue
+
+        # Global start / end for this producer clip
+        xml_start = base_start + entry_in_sec
+        xml_end = base_start + entry_out_sec
+
+        # Grab rect keyframes for this entry
+        rect_prop = None
+        for filt in entry.findall("filter"):
+            for prop in filt.findall("property"):
+                if prop.get("name") == "rect":
+                    rect_prop = prop.text.strip()
+                    break
+            if rect_prop:
+                break
+
+        if not rect_prop:
+            continue
+
+        # Parse all keyframes from rect
+        keyframes = []
+        for kf_item in rect_prop.split(";"):
+            if "=" not in kf_item:
+                continue
+            tcode, bbox_str = kf_item.split("=", 1)
+            tcode = tcode.strip()
+            try:
+                t_sec = hhmmss_decimal_to_seconds(tcode)
+            except ValueError:
+                # skip invalid
+                continue
+            bbox = parse_bbox_string(bbox_str)
+            if bbox is None:
+                continue
+            # Store the keyframe time *relative to global video*, i.e. add base_start
+            global_t = base_start + t_sec
+            # Only consider keyframes that fall within xml_start/xml_end (or slightly outside to allow interpolation)
+            keyframes.append((global_t, bbox))
+
+        if not keyframes:
+            continue
+
+        keyframes.sort(key=lambda x: x[0])
+
+        # === Now loop through frames and generate annotations for this entry
+
+        for fidx in all_frames:
+            current_sec = (fidx - 1) / frame_rate
+            if current_sec < xml_start or current_sec > xml_end:
                 continue
 
-            kf_list.sort(key=lambda x: x[0])
+            # Find two keyframes around current_sec
+            bbox_interp = None
+            for i in range(len(keyframes) - 1):
+                t1, b1 = keyframes[i]
+                t2, b2 = keyframes[i + 1]
+                if t1 <= current_sec <= t2:
+                    bbox_interp = interpolate_bbox(t1, b1, t2, b2, current_sec)
+                    break
 
-            # Get all frame indices from your images
-            all_frames = sorted(int(re.match(r"ImgSeq_(\d+)\.png", f).group(1)) for f in image_files)
+            if bbox_interp is None:
+                # If before first keyframe, or after last, pick nearest
+                if current_sec < keyframes[0][0]:
+                    bbox_interp = keyframes[0][1]
+                else:
+                    bbox_interp = keyframes[-1][1]
 
-            for fidx in all_frames:
-                current_sec = (fidx - 1) / frame_rate
+            x, y, w, h = bbox_interp
+            # Normalize to YOLO format: center_x, center_y, width, height (all relative 0–1)
+            x_center = (x + w / 2.0) / image_width
+            y_center = (y + h / 2.0) / image_height
+            w_rel = w / image_width
+            h_rel = h / image_height
 
-                # Find the interval for interpolation or nearest bbox
-                interp_bbox = None
-                for i in range(len(kf_list) - 1):
-                    t1, bbox1 = kf_list[i]
-                    t2, bbox2 = kf_list[i + 1]
-                    if t1 <= current_sec <= t2:
-                        interp_bbox = interpolate_bbox(t1, bbox1, t2, bbox2, current_sec)
-                        break
+            # Clip or skip boxes that are totally outside or weird
+            if w_rel <= 0 or h_rel <= 0 or x_center < 0 or x_center > 1 or y_center < 0 or y_center > 1:
+                continue
 
-                if interp_bbox is None:
-                    # Outside keyframe range, pick nearest bbox
-                    if current_sec < kf_list[0][0]:
-                        interp_bbox = kf_list[0][1]
-                    else:
-                        interp_bbox = kf_list[-1][1]
+            label = f"{class_id} {x_center:.6f} {y_center:.6f} {w_rel:.6f} {h_rel:.6f}"
 
-                x, y, w, h = interp_bbox
-                x_center = (x + w / 2) / image_width
-                y_center = (y + h / 2) / image_height
-                w_norm = w / image_width
-                h_norm = h / image_height
+            frame_annotations.setdefault(fidx, []).append(label)
 
-                yolo_label = f"{class_id} {x_center:.6f} {y_center:.6f} {w_norm:.6f} {h_norm:.6f}"
-
-                if fidx not in frame_annotations:
-                    frame_annotations[fidx] = []
-                frame_annotations[fidx].append(yolo_label)
-
-
-
-# === Step 2: For every image in folder, write corresponding txt file with annotations ===
-
+# === Write .txt files ===
 
 for img_filename in image_files:
-    match = re.match(r"ImgSeq_(\d+)\.png", img_filename)
-    if not match:
+    m = re.match(r"ImgSeq_(\d+)\.png", img_filename)
+    if not m:
         continue
-    frame_idx = int(match.group(1))
-
-    labels = frame_annotations.get(frame_idx, [])
-    txt_filename = f"ImgSeq_{frame_idx:05d}.txt"
-    txt_path = os.path.join(output_label_folder, txt_filename)
-
+    fidx = int(m.group(1))
+    labels = frame_annotations.get(fidx, [])
+    txt_path = os.path.join(output_label_folder, f"ImgSeq_{fidx:05d}.txt")
     with open(txt_path, "w") as f:
         if labels:
             f.write("\n".join(labels))
         else:
-            # Write empty file or skip if you want
             f.write("")
 
-print(f"✅ Wrote {len(image_files)} label files to '{output_label_folder}'")
-
-
-# === Extract class names from producers ===
-
-# Store producer_id → clipname
-producer_names = {}
-
-for producer in root.iter("producer"):
-    producer_id = producer.get("id")
-    
-    # Skip "black" producers or "producer0"
-    is_black = any(
-        prop.get("name") == "resource" and prop.text.strip().lower() == "black"
-        for prop in producer.findall("property")
-    )
-    if is_black or producer_id == "producer0":
-        continue
-
-    class_name = None
-
-    for prop in producer.findall("property"):
-        if prop.get("name") == "kdenlive:clipname":
-            class_name = prop.text.strip()
-            break
-
-    if not class_name:
-        for prop in producer.findall("property"):
-            if prop.get("name") == "resource":
-                resource_path = prop.text.strip()
-                class_name = os.path.splitext(os.path.basename(resource_path))[0]
-                break
-
-    if not class_name:
-        class_name = producer_id
-
-    producer_names[producer_id] = class_name
-
-# === Sort by producer ID number ===
-sorted_producers = sorted(
-    producer_names.items(),
-    key=lambda item: int(item[0].replace("producer", ""))
-)
-
-class_names = [name for _, name in sorted_producers]
-
-# === Write YAML with inline list ===
-yaml_data = f"""train: dataset/images/train
-val: dataset/images/val
-nc: {len(class_names)}
-names: {class_names}
-"""
-
-with open(output_yaml, 'w') as f:
-    f.write(yaml_data)
-
-print(f"✅ data.yaml written with {len(class_names)} classes to: {output_yaml}")
+print(f"✅ Finished writing {len(image_files)} annotation files to {output_label_folder}")
