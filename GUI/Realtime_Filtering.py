@@ -92,7 +92,7 @@ class VideoFilterApp:
 
         imgtk = ImageTk.PhotoImage(image=img)
         self.video_label.imgtk = imgtk
-        self.video_label.config(image=imgtk)
+        self.video_label.config(image=imgtk) 
 
         self.root.after(10, self.update_frame)
 

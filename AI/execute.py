@@ -86,7 +86,7 @@ def testProcessor(iterations, model, image_path):
     for i in range(iterations):
         start_time = time.time()
         try:
-            results = model.predict(source=image_path, imgsz=640, conf=0.5)
+            results = model.predict(source=image_path, imgsz=640, conf=0.1)
             end_time = time.time()
             inference_time = end_time - start_time
             total_time += inference_time
@@ -136,7 +136,8 @@ testProcessor(1, ov_model, image_path)
 '''
 
 #Provide video stream address
-cap = cv2.VideoCapture('http://0.0.0.0:5000/video_feed')
+#cap = cv2.VideoCapture('http://0.0.0.0:5000/video_feed')
+cap = cv2.VideoCapture('http://10.12.165.126:8889/cam1/')
 
 if not cap.isOpened():
     print('Error: Could not access video stream')

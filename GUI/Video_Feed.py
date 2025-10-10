@@ -116,8 +116,8 @@ class FullViewVideoRecorderGUI:
                 if w > 0 and h > 0:
                     img = img.resize((w, h))
                 imgtk = ImageTk.PhotoImage(image=img)
-                self.video_label.imgtk = imgtk
-                self.video_label.configure(image=imgtk)
+                self.video_label.imgtk = imgtk 
+                self.video_label.configure(image=imgtk) 
             self.root.after(10, self.update_frame)
 
     def stop_feed(self):
