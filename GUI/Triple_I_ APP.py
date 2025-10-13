@@ -1,4 +1,4 @@
-# Triple_I_APP.py — final expanded, feature-complete version
+# Triple_I_APP.py — with Realtime_Filtering + MediaMTX integration
 
 import tkinter as tk
 import tkinter.font as tkfont
@@ -8,6 +8,7 @@ import os
 import webbrowser
 import subprocess
 import sys
+import atexit
 from pathlib import Path
 
 # ===================== USER DATA =====================
@@ -39,10 +40,8 @@ SCRIPT_PATHS = {
     "viz_batch": Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\BatchVisualiseTXTBB.py"),
     # Optional stream launcher; if missing we’ll open the URL instead
     "stream":    Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Video_Feed.py"),
-    # ---- Raspberry Pi / MediaMTX integration ----
-    MEDIAMTX_DIR = Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\Pi\mediamtx"),
-    SCRIPT_PATHS["realtime"] = Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Realtime_Filtering.py"),
-    RTSP_URL = "rtsp://localhost:8554/bolts"
+    # NEW: realtime filtering script
+    "realtime":  Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Realtime_Filtering.py"),
 }
 
 # Visual scale
@@ -66,8 +65,15 @@ COLORS = {
 # Logo (change if needed)
 LOGO_PATH = r"C:\Users\joypa\Downloads\logo_final.jpg"
 
-# Stream URL
+# Stream URL for your local live feed page
 LIVE_FEED_URL = "http://localhost:5000/video_feed"
+
+# ---- Raspberry Pi / MediaMTX integration ----
+# Folder that contains mediamtx.exe
+MEDIAMTX_DIR = Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\Pi\mediamtx")
+
+# RTSP URL exposed by MediaMTX. Change localhost to your NUC/Pi IP if needed.
+RTSP_URL = "rtsp://localhost:8554/bolts"
 
 # ===================== ROOT =====================
 
@@ -83,14 +89,13 @@ _icon_bold   = tkfont.Font(family="Arial", size=36, weight="bold")
 
 # Keep PhotoImage references alive (prevents Tkinter from clearing logos)
 _IMG_REFS = []
-
 def keep_image_ref(img):
     """Store a strong reference to PhotoImage so it isn't garbage collected."""
     _IMG_REFS.append(img)
 
 # ===================== HELPERS =====================
 
-def run_script(path: Path):
+def run_script(path: Path, extra_args=None, extra_env=None):
     """Launch a Python script in a separate process."""
     if not isinstance(path, Path):
         path = Path(path)
@@ -98,7 +103,13 @@ def run_script(path: Path):
         messagebox.showerror("Error", f"File not found:\n{path}")
         return
     try:
-        subprocess.Popen([sys.executable, str(path)], cwd=str(path.parent), shell=True)
+        args = [sys.executable, str(path)]
+        if extra_args:
+            args.extend(extra_args)
+        env = os.environ.copy()
+        if extra_env:
+            env.update(extra_env)
+        subprocess.Popen(args, cwd=str(path.parent), shell=True, env=env)
     except Exception as e:
         messagebox.showerror("Error", f"Failed to run {path.name}:\n{e}")
 
@@ -116,6 +127,18 @@ def start_stream():
         # fallback to URL
         open_live_feed()
 
+def hex_shift(hex_color: str, pct: float) -> str:
+    """Lighten/darken a hex color by pct (-0.4..+0.4)."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    def clamp(x): return max(0, min(255, int(x)))
+    r, g, b = clamp(r + pct*255), clamp(g + pct*255), clamp(b + pct*255)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+def clear_root():
+    for w in root.winfo_children():
+        w.destroy()
+
 # ---- MediaMTX process management ----
 _mediamtx_proc = None
 
@@ -129,7 +152,7 @@ def start_mediamtx():
             messagebox.showerror("MediaMTX", f"Could not find:\n{exe_path}\n\nCheck MEDIAMTX_DIR.")
             return
         # If a config file exists in the folder, MediaMTX will auto-load it.
-        _mediamtx_proc = subprocess.Popen([str(exe_path)], cwd=str(MEDIAMTX_DIR))
+        _mediamtx_proc = subprocess.Popen([str(exe_path)], cwd=str(MEDIAMTX_DIR), shell=True)
         messagebox.showinfo("MediaMTX", "MediaMTX started.")
     except Exception as e:
         messagebox.showerror("MediaMTX", f"Failed to start MediaMTX:\n{e}")
@@ -148,22 +171,38 @@ def stop_mediamtx():
         messagebox.showerror("MediaMTX", f"Failed to stop MediaMTX:\n{e}")
 
 def run_realtime_filtering():
-    """Launch Realtime_Filtering.py with the RTSP source."""
+    """
+    Launch Realtime_Filtering.py pointing at the RTSP URL.
+    We pass it both as argv[1] and as RTSP_URL env var, so it works
+    whether the script reads from sys.argv or os.environ.
+    """
     path = SCRIPT_PATHS.get("realtime")
     if not path or not path.exists():
-        messagebox.showerror
+        messagebox.showerror("Realtime Filtering", f"Realtime_Filtering.py not found:\n{path}")
+        return
+    run_script(path, extra_args=[RTSP_URL], extra_env={"RTSP_URL": RTSP_URL})
 
-def hex_shift(hex_color: str, pct: float) -> str:
-    """Lighten/darken a hex color by pct (-0.4..+0.4)."""
-    h = hex_color.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    def clamp(x): return max(0, min(255, int(x)))
-    r, g, b = clamp(r + pct*255), clamp(g + pct*255), clamp(b + pct*255)
-    return f"#{r:02x}{g:02x}{b:02x}"
+def open_rtsp_in_player():
+    """
+    Open the RTSP URL with the default handler (e.g., VLC if installed).
+    On Windows, os.startfile handles URLs; fallback to webbrowser if needed.
+    """
+    try:
+        if os.name == "nt":
+            os.startfile(RTSP_URL)  # type: ignore[attr-defined]
+        else:
+            webbrowser.open(RTSP_URL)
+    except Exception:
+        webbrowser.open(RTSP_URL)
 
-def clear_root():
-    for w in root.winfo_children():
-        w.destroy()
+def _shutdown():
+    """Ensure MediaMTX is stopped on app exit."""
+    try:
+        stop_mediamtx()
+    except Exception:
+        pass
+
+atexit.register(_shutdown)
 
 # ===================== TILES (with hover) =====================
 
@@ -229,14 +268,14 @@ def show_login():
     clear_root()
     login = tk.Frame(root, bg=BG)
     # slightly higher than center
-    login.place(relx=0.5, rely=0.42, anchor="center")
+    login.place(relx=0.5, rely=0.40, anchor="center")  # raised a bit
 
     try:
-        img = Image.open(LOGO_PATH).resize((170, 170), Image.Resampling.LANCZOS)
+        img = Image.open(LOGO_PATH).resize((220, 220), Image.Resampling.LANCZOS)  # bigger logo
         login_logo = ImageTk.PhotoImage(img)
         keep_image_ref(login_logo)
         tk.Label(login, image=login_logo, bg=BG).grid(row=0, column=0, columnspan=3, pady=(0, 8))
-        tk.Label(login, text="Sponsored by Triple - I", bg=BG, font=("Arial", 11)).grid(row=1, column=0, columnspan=3, pady=(0, 12))
+        tk.Label(login, text="Sponsored by Triple - I", bg=BG, font=("Arial", 12)).grid(row=1, column=0, columnspan=3, pady=(0, 14))
     except Exception:
         tk.Label(login, text="QuAck", font=("Arial", 22, "bold"), bg=BG).grid(row=0, column=0, columnspan=3, pady=(0, 12))
 
@@ -386,12 +425,18 @@ def render_section(section, username):
 
     elif section == "camera":
         tiles = [
-            ("Run Inference",  "🎯", COLORS["blue"],  lambda: run_script(SCRIPT_PATHS["execute"])),
-            ("Start Stream",   "▶️", COLORS["green"], start_stream),
-            ("Open Live Feed", "🌐", COLORS["peach"], open_live_feed),
+            ("Run Inference",      "🎯", COLORS["blue"],  lambda: run_script(SCRIPT_PATHS["execute"])),
+            ("Start Stream",       "▶️", COLORS["green"], start_stream),
+            ("Open Live Feed",     "🌐", COLORS["peach"], open_live_feed),
+            ("Start MediaMTX",     "🟢", COLORS["green"], start_mediamtx),
+            ("Stop MediaMTX",      "⛔", COLORS["pink"],  stop_mediamtx),
+            ("Realtime Filtering", "🪄", COLORS["blue"],  run_realtime_filtering),
+            ("Open RTSP in VLC",   "🎬", COLORS["peach"], open_rtsp_in_player),
         ]
+        # Lay out as multiple rows if needed
         for i, (title, icon, color, cmd) in enumerate(tiles):
-            make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
+            r, c = divmod(i, 3)  # 3 tiles per row for spacing
+            make_tile(tiles_frame, title, icon, color, cmd).grid(row=r, column=c, padx=TILE_PADX, pady=TILE_PADY)
 
     elif section == "gallery":
         tiles = [
@@ -403,5 +448,9 @@ def render_section(section, username):
 
 # ===================== START =====================
 
-show_splash()
-root.mainloop()
+def main():
+    show_splash()
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
