@@ -13,23 +13,21 @@ from pathlib import Path
 
 BG = "#ffffff"
 
-# Enlarged, clean typography
-TITLE_FONT     = ("Arial", 28, "bold")
-SECTION_FONT   = ("Arial", 24, "bold")
-LABEL_FONT     = ("Arial", 14, "bold")
-BTN_FONT       = ("Arial", 16, "bold")
+TITLE_FONT   = ("Arial", 28, "bold")
+SECTION_FONT = ("Arial", 24, "bold")
+LABEL_FONT   = ("Arial", 14, "bold")
+BTN_FONT     = ("Arial", 16, "bold")
 
-# Tile sizing (big icons everywhere)
 TILE_W, TILE_H = 200, 180
 TILE_PADX, TILE_PADY = 28, 20
 
-# Original palette
+# Original palette (ensure this block is exactly as-is)
 COLORS = {
-    "grey":   "#e0e0e0",
-    "blue":   "#e8f5ff",
-    "peach":  "#ffe0b2",
-    "green":  "#c8e6c9",
-    "pink":   "#ffcdd2",
+    "grey":  "#e0e0e0",
+    "blue":  "#e8f5ff",
+    "peach": "#ffe0b2",
+    "green": "#c8e6c9",
+    "pink":  "#ffcdd2",
 }
 
 # Logo file (used on splash, login, dashboard)
