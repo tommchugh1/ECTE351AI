@@ -77,11 +77,12 @@ root.resizable(False, False)
 _icon_normal = tkfont.Font(family="Arial", size=36, weight="normal")
 _icon_bold   = tkfont.Font(family="Arial", size=36, weight="bold")
 
-# Keep references to PhotoImage to avoid GC
+# Keep PhotoImage references alive (prevents Tkinter from clearing logos)
+_IMG_REFS = []
+
 def keep_image_ref(img):
-    if not hasattr(root, "_img_refs"):
-        root._img_refs = []
-    root._img_refs.append(img)
+    """Store a strong reference to PhotoImage so it isn't garbage collected."""
+    _IMG_REFS.append(img)
 
 # ===================== HELPERS =====================
 
