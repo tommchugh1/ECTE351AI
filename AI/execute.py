@@ -109,6 +109,10 @@ def testProcessor(iterations, model, image_path):
     class_names = model.names  # get class names from model
 
     # Draw all boxes manually on the image
+    results = model(image)  
+    if results is None:
+        results = []        # safe default
+
     for r in results:
         boxes = r.boxes
         for box in boxes:
