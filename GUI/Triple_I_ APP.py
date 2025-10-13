@@ -38,13 +38,14 @@ SCRIPT_PATHS = {
     "viz_one":   Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\visualiseTXT.py"),
     "viz_batch": Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\BatchVisualiseTXTBB.py"),
     # Optional local preview launcher; if absent we just open the URL
-    "stream":    Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Video_Feed.py"),
+    "stream":    Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\PI\streamvideo.py" \
+    ""),
     # Realtime filtering script (OpenCV)
     "realtime":  Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Realtime_Filtering.py"),
 }
 
 # Folder that should contain streamvideo.py (you can change in-app)
-DEFAULT_STREAM_DIR = Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\Pi\mediamtx")
+DEFAULT_STREAM_DIR = Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\PI\mediamtx")
 STREAM_DIR_FILE = Path("stream_folder.txt")  # remembers the chosen folder
 STREAM_FILENAME = "streamvideo.py"           # your Flask streamer
 STREAM_URL_HTTP = "http://127.0.0.1:5000/video_feed"
@@ -68,7 +69,7 @@ COLORS = {
 }
 
 # Logo (change if needed)
-LOGO_PATH = r"C:\Users\joypa\Downloads\logo_final.jpg"
+LOGO_PATH = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\logo_final.jpg"
 
 # ===================== ROOT =====================
 
@@ -117,7 +118,7 @@ def hex_shift(hex_color: str, pct: float) -> str:
     """Lighten/darken a hex color by pct (-0.4..+0.4)."""
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    clamp = lambda x: max(0, min(255, int(x))))
+    clamp = lambda x: max(0, min(255, int(x)))
     r, g, b = clamp(r + pct*255), clamp(g + pct*255), clamp(b + pct*255)
     return f"#{r:02x}{g:02x}{b:02x}"
 
