@@ -1,4 +1,4 @@
-# Triple_I_APP.py — with Realtime_Filtering + MediaMTX integration (folder picker + auto-detect)
+# Triple_I_APP.py — Flask (streamvideo.py) streaming + optional MediaMTX + Realtime_Filtering
 
 import tkinter as tk
 import tkinter.font as tkfont
@@ -39,11 +39,15 @@ SCRIPT_PATHS = {
     "xml2yolo":  Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\KdenliveXMLtoYOLOv8.py"),
     "viz_one":   Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\visualiseTXT.py"),
     "viz_batch": Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\BatchVisualiseTXTBB.py"),
-    # Optional stream launcher; if missing we’ll open the URL instead
+    # Optional local stream launcher you had before
     "stream":    Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Video_Feed.py"),
     # Realtime filtering script
     "realtime":  Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Realtime_Filtering.py"),
 }
+
+# Pi streaming folder (contains streamvideo.py)
+PI_MEDIA_DIR = Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\Pi\mediamtx")
+STREAM_SCRIPT = PI_MEDIA_DIR / "streamvideo.py"  # Flask server
 
 # Visual scale
 TITLE_FONT     = ("Arial", 28, "bold")
@@ -66,16 +70,10 @@ COLORS = {
 # Logo (change if needed)
 LOGO_PATH = r"C:\Users\joypa\Downloads\logo_final.jpg"
 
-# Stream URL for your local live feed page
+# Live feed URL (Flask streamvideo.py serves this)
 LIVE_FEED_URL = "http://localhost:5000/video_feed"
 
-# ---- Raspberry Pi / MediaMTX integration ----
-# Default folder that should contain mediamtx.exe (can be adjusted from the UI).
-MEDIAMTX_DIR = Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\Pi\mediamtx")
-# Persist the folder you pick here (next to this script).
-_MEDIAMTX_HINT_FILE = Path(__file__).with_name("mediamtx_dir.txt")
-
-# RTSP URL exposed by MediaMTX. Change localhost to your NUC/Pi IP if needed.
+# Optional RTSP (if you later use MediaMTX)
 RTSP_URL = "rtsp://localhost:8554/bolts"
 
 # ===================== ROOT =====================
@@ -90,7 +88,7 @@ root.resizable(False, False)
 _icon_normal = tkfont.Font(family="Arial", size=36, weight="normal")
 _icon_bold   = tkfont.Font(family="Arial", size=36, weight="bold")
 
-# Keep PhotoImage references alive (prevents Tkinter from clearing logos)
+# Keep PhotoImage refs alive
 _IMG_REFS: list[ImageTk.PhotoImage] = []
 def keep_image_ref(img):
     _IMG_REFS.append(img)
@@ -121,18 +119,10 @@ def open_live_feed():
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open live feed URL:\n{e}")
 
-def start_stream():
-    stream_path = SCRIPT_PATHS.get("stream")
-    if stream_path and stream_path.exists():
-        run_script(stream_path)
-    else:
-        open_live_feed()
-
 def hex_shift(hex_color: str, pct: float) -> str:
-    """Lighten/darken a hex color by pct (-0.4..+0.4)."""
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    def clamp(x): return max(0, min(255, int(x)))
+    clamp = lambda x: max(0, min(255, int(x)))
     r, g, b = clamp(r + pct*255), clamp(g + pct*255), clamp(b + pct*255)
     return f"#{r:02x}{g:02x}{b:02x}"
 
@@ -140,19 +130,61 @@ def clear_root():
     for w in root.winfo_children():
         w.destroy()
 
-# ---------- MediaMTX folder helpers ----------
+# ---------- Flask stream (streamvideo.py) management ----------
+
+_flask_proc: Optional[subprocess.Popen] = None
+
+def start_flask_stream():
+    """Start Flask MJPEG stream (Pi/mediamtx/streamvideo.py)."""
+    global _flask_proc
+    try:
+        if not STREAM_SCRIPT.exists():
+            messagebox.showerror(
+                "Stream",
+                f"Could not find streamvideo.py:\n{STREAM_SCRIPT}\n\n"
+                "Please check the path."
+            )
+            return
+        if _flask_proc and _flask_proc.poll() is None:
+            messagebox.showinfo("Stream", "Flask stream is already running.")
+            return
+        _flask_proc = subprocess.Popen(
+            [sys.executable, str(STREAM_SCRIPT)],
+            cwd=str(STREAM_SCRIPT.parent),
+            shell=True
+        )
+        messagebox.showinfo("Stream", "Flask stream started.\nOpening the live feed page…")
+        open_live_feed()
+    except Exception as e:
+        messagebox.showerror("Stream", f"Failed to start Flask stream:\n{e}")
+
+def stop_flask_stream():
+    """Stop Flask MJPEG stream if running."""
+    global _flask_proc
+    try:
+        if _flask_proc and _flask_proc.poll() is None:
+            _flask_proc.terminate()
+            _flask_proc = None
+            messagebox.showinfo("Stream", "Flask stream stopped.")
+        else:
+            messagebox.showinfo("Stream", "Flask stream is not running.")
+    except Exception as e:
+        messagebox.showerror("Stream", f"Failed to stop Flask stream:\n{e}")
+
+# ---------- Optional MediaMTX helpers (kept for future use) ----------
+
+_MEDIAMTX_HINT_FILE = Path(__file__).with_name("mediamtx_dir.txt")
+_mediamtx_proc: Optional[subprocess.Popen] = None
 
 def _load_mediamtx_dir() -> Path:
-    """Return the saved MediaMTX folder if present; otherwise default MEDIAMTX_DIR."""
     try:
         if _MEDIAMTX_HINT_FILE.exists():
-            txt = _MEDIAMTX_HINT_FILE.read_text(encoding="utf-8").strip().strip('"')
-            p = Path(txt)
+            p = Path(_MEDIAMTX_HINT_FILE.read_text(encoding="utf-8").strip().strip('"'))
             if p.exists():
                 return p
     except Exception:
         pass
-    return MEDIAMTX_DIR
+    return PI_MEDIA_DIR
 
 def _save_mediamtx_dir(folder: Path) -> None:
     try:
@@ -161,22 +193,15 @@ def _save_mediamtx_dir(folder: Path) -> None:
         pass
 
 def _resolve_mediamtx_exe(folder: Path) -> Optional[Path]:
-    """
-    Try to locate the mediamtx executable (supports legacy 'rtsp-simple-server.exe').
-    Searches directly then recursively.
-    """
     names = ["mediamtx.exe", "rtsp-simple-server.exe"] if os.name == "nt" else ["mediamtx"]
-    # direct
     for n in names:
         cand = folder / n
         if cand.exists():
             return cand
-    # recursive
     for n in names:
         for p in folder.rglob(n):
             if p.is_file():
                 return p
-    # fallback: any mediamtx*.exe
     if os.name == "nt":
         for p in folder.rglob("mediamtx*.exe"):
             if p.is_file():
@@ -184,46 +209,39 @@ def _resolve_mediamtx_exe(folder: Path) -> Optional[Path]:
     return None
 
 def set_mediamtx_dir():
-    """Prompt user to pick the MediaMTX folder and save it."""
-    d = filedialog.askdirectory(title="Select the folder that contains mediamtx.exe")
+    d = filedialog.askdirectory(title="Select the folder that contains mediamtx")
     if not d:
         return
     folder = Path(d)
     exe = _resolve_mediamtx_exe(folder)
-    if not exe:
+    if not exe and not (folder / "streamvideo.py").exists():
         messagebox.showerror(
             "MediaMTX",
-            f"No MediaMTX executable found under:\n{folder}\n\n"
-            "Pick the folder that contains mediamtx.exe (or rtsp-simple-server.exe)."
+            "Neither mediamtx executable nor streamvideo.py found in that folder."
         )
         return
     _save_mediamtx_dir(folder)
-    messagebox.showinfo("MediaMTX", f"Saved MediaMTX folder:\n{folder}")
-
-# ---- MediaMTX process management ----
-_mediamtx_proc = None
+    messagebox.showinfo("MediaMTX", f"Saved folder:\n{folder}")
 
 def start_mediamtx():
-    """Start the MediaMTX RTSP server from the chosen folder (auto-detect exe)."""
+    """Try to start MediaMTX if available; otherwise fall back to Flask stream."""
     global _mediamtx_proc
     try:
         folder = _load_mediamtx_dir()
-        exe_path = _resolve_mediamtx_exe(folder)
-        if not exe_path:
-            resp = messagebox.askyesno(
-                "MediaMTX",
-                "Could not find mediamtx.exe.\n\nDo you want to select the MediaMTX folder now?"
-            )
-            if resp:
-                set_mediamtx_dir()
+        exe = _resolve_mediamtx_exe(folder)
+        if not exe:
+            # No mediamtx → fall back gracefully to Flask stream
+            start_flask_stream()
             return
-        _mediamtx_proc = subprocess.Popen([str(exe_path)], cwd=str(exe_path.parent), shell=True)
-        messagebox.showinfo("MediaMTX", f"MediaMTX started from:\n{exe_path.parent}")
+        if _mediamtx_proc and _mediamtx_proc.poll() is None:
+            messagebox.showinfo("MediaMTX", "MediaMTX is already running.")
+            return
+        _mediamtx_proc = subprocess.Popen([str(exe)], cwd=str(exe.parent), shell=True)
+        messagebox.showinfo("MediaMTX", f"MediaMTX started from:\n{exe.parent}")
     except Exception as e:
         messagebox.showerror("MediaMTX", f"Failed to start MediaMTX:\n{e}")
 
 def stop_mediamtx():
-    """Terminate MediaMTX if we started it."""
     global _mediamtx_proc
     try:
         if _mediamtx_proc and _mediamtx_proc.poll() is None:
@@ -235,19 +253,17 @@ def stop_mediamtx():
     except Exception as e:
         messagebox.showerror("MediaMTX", f"Failed to stop MediaMTX:\n{e}")
 
+# ---------- Realtime Filtering (still supported) ----------
+
 def run_realtime_filtering():
-    """
-    Launch Realtime_Filtering.py pointing at the RTSP URL.
-    We pass it both as argv[1] and as RTSP_URL env var.
-    """
     path = SCRIPT_PATHS.get("realtime")
     if not path or not path.exists():
         messagebox.showerror("Realtime Filtering", f"Realtime_Filtering.py not found:\n{path}")
         return
+    # If you later switch to RTSP via MediaMTX, pass RTSP_URL; for now it can use default camera.
     run_script(path, extra_args=[RTSP_URL], extra_env={"RTSP_URL": RTSP_URL})
 
 def open_rtsp_in_player():
-    """Open RTSP URL (VLC if default handler)."""
     try:
         if os.name == "nt":
             os.startfile(RTSP_URL)  # type: ignore[attr-defined]
@@ -257,7 +273,10 @@ def open_rtsp_in_player():
         webbrowser.open(RTSP_URL)
 
 def _shutdown():
-    """Ensure MediaMTX is stopped on app exit."""
+    try:
+        stop_flask_stream()
+    except Exception:
+        pass
     try:
         stop_mediamtx()
     except Exception:
@@ -269,7 +288,6 @@ atexit.register(_shutdown)
 
 def make_tile(parent, title, icon_text, bg_color, command):
     container = tk.Frame(parent, bg="white")
-
     tile = tk.Frame(
         container, bg=bg_color, width=TILE_W, height=TILE_H,
         highlightthickness=1, highlightbackground="#b0b0b0", relief="flat", bd=2
@@ -284,17 +302,9 @@ def make_tile(parent, title, icon_text, bg_color, command):
     title_lbl.pack()
 
     hover_bg = hex_shift(bg_color, -0.06)
-
-    def on_enter(_):
-        tile.configure(bg=hover_bg, relief="raised")
-        icon_lbl.configure(bg=hover_bg, font=_icon_bold)
-
-    def on_leave(_):
-        tile.configure(bg=bg_color, relief="flat")
-        icon_lbl.configure(bg=bg_color, font=_icon_normal)
-
-    def on_click(_):
-        command()
+    def on_enter(_): tile.configure(bg=hover_bg, relief="raised"); icon_lbl.configure(bg=hover_bg, font=_icon_bold)
+    def on_leave(_): tile.configure(bg=bg_color, relief="flat");   icon_lbl.configure(bg=bg_color, font=_icon_normal)
+    def on_click(_): command()
 
     for w in (tile, icon_lbl):
         w.bind("<Enter>", on_enter)
@@ -327,11 +337,10 @@ def show_splash():
 def show_login():
     clear_root()
     login = tk.Frame(root, bg=BG)
-    # slightly higher than center
-    login.place(relx=0.5, rely=0.40, anchor="center")
+    login.place(relx=0.5, rely=0.40, anchor="center")  # slightly higher
 
     try:
-        img = Image.open(LOGO_PATH).resize((220, 220), Image.Resampling.LANCZOS)  # bigger logo
+        img = Image.open(LOGO_PATH).resize((220, 220), Image.Resampling.LANCZOS)
         login_logo = ImageTk.PhotoImage(img)
         keep_image_ref(login_logo)
         tk.Label(login, image=login_logo, bg=BG).grid(row=0, column=0, columnspan=3, pady=(0, 8))
@@ -354,11 +363,9 @@ def show_login():
 
     def toggle_pw():
         if pass_entry.cget("show") == "*":
-            pass_entry.config(show="")
-            show_btn.config(text="Hide Password")
+            pass_entry.config(show=""); show_btn.config(text="Hide Password")
         else:
-            pass_entry.config(show="*")
-            show_btn.config(text="Show Password")
+            pass_entry.config(show="*"); show_btn.config(text="Show Password")
 
     show_btn = tk.Button(login, text="Show Password", command=toggle_pw,
                          font=("Arial", 12), bg=BTN_COLOR, fg="white")
@@ -470,7 +477,6 @@ def render_section(section, username):
                   lambda: show_dashboard(username)).grid(row=0, column=0, padx=TILE_PADX, pady=TILE_PADY)
 
     elif section == "inventory":
-        # ✅ FIXED: removed the extra ')' that caused syntax errors
         tiles = [
             ("Train Model",          "📚", COLORS["blue"],  lambda: run_script(SCRIPT_PATHS["train"])),
             ("Automate Annotations", "⚙",  COLORS["green"], lambda: run_script(SCRIPT_PATHS["auto"])),
@@ -481,17 +487,19 @@ def render_section(section, username):
 
     elif section == "camera":
         tiles = [
-            ("Set MediaMTX Folder", "📁", COLORS["grey"],  set_mediamtx_dir),
-            ("Run Inference",       "🎯", COLORS["blue"],  lambda: run_script(SCRIPT_PATHS["execute"])),
-            ("Start Stream",        "▶️", COLORS["green"], start_stream),
-            ("Open Live Feed",      "🌐", COLORS["peach"], open_live_feed),
-            ("Start MediaMTX",      "🟢", COLORS["green"], start_mediamtx),
-            ("Stop MediaMTX",       "⛔", COLORS["pink"],  stop_mediamtx),
-            ("Realtime Filtering",  "🪄", COLORS["blue"],  run_realtime_filtering),
-            ("Open RTSP in VLC",    "🎬", COLORS["peach"], open_rtsp_in_player),
+            ("Set Media Folder",     "📁", COLORS["grey"],  set_mediamtx_dir),
+            ("Start Flask Stream",   "▶️", COLORS["green"], start_flask_stream),
+            ("Stop Flask Stream",    "⏹", COLORS["pink"],  stop_flask_stream),
+            ("Open Live Feed",       "🌐", COLORS["peach"], open_live_feed),
+            ("Run Inference",        "🎯", COLORS["blue"],  lambda: run_script(SCRIPT_PATHS["execute"])),
+            # Optional RTSP / MediaMTX if you add the binary later:
+            ("Start MediaMTX",       "🟢", COLORS["green"], start_mediamtx),
+            ("Stop MediaMTX",        "⛔", COLORS["pink"],  stop_mediamtx),
+            ("Realtime Filtering",   "🪄", COLORS["blue"],  run_realtime_filtering),
+            ("Open RTSP in VLC",     "🎬", COLORS["peach"], open_rtsp_in_player),
         ]
         for i, (title, icon, color, cmd) in enumerate(tiles):
-            r, c = divmod(i, 3)  # 3 tiles per row
+            r, c = divmod(i, 3)  # 3 per row
             make_tile(tiles_frame, title, icon, color, cmd).grid(row=r, column=c, padx=TILE_PADX, pady=TILE_PADY)
 
     elif section == "gallery":
