@@ -39,6 +39,10 @@ SCRIPT_PATHS = {
     "viz_batch": Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\BatchVisualiseTXTBB.py"),
     # Optional stream launcher; if missing we’ll open the URL instead
     "stream":    Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Video_Feed.py"),
+    # ---- Raspberry Pi / MediaMTX integration ----
+    MEDIAMTX_DIR = Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\Pi\mediamtx"),
+    SCRIPT_PATHS["realtime"] = Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Realtime_Filtering.py"),
+    RTSP_URL = "rtsp://localhost:8554/bolts"
 }
 
 # Visual scale
@@ -111,6 +115,43 @@ def start_stream():
     else:
         # fallback to URL
         open_live_feed()
+
+# ---- MediaMTX process management ----
+_mediamtx_proc = None
+
+def start_mediamtx():
+    """Start the MediaMTX RTSP server from MEDIAMTX_DIR."""
+    global _mediamtx_proc
+    try:
+        exe = "mediamtx.exe" if os.name == "nt" else "mediamtx"
+        exe_path = MEDIAMTX_DIR / exe
+        if not exe_path.exists():
+            messagebox.showerror("MediaMTX", f"Could not find:\n{exe_path}\n\nCheck MEDIAMTX_DIR.")
+            return
+        # If a config file exists in the folder, MediaMTX will auto-load it.
+        _mediamtx_proc = subprocess.Popen([str(exe_path)], cwd=str(MEDIAMTX_DIR))
+        messagebox.showinfo("MediaMTX", "MediaMTX started.")
+    except Exception as e:
+        messagebox.showerror("MediaMTX", f"Failed to start MediaMTX:\n{e}")
+
+def stop_mediamtx():
+    """Terminate MediaMTX if we started it."""
+    global _mediamtx_proc
+    try:
+        if _mediamtx_proc and _mediamtx_proc.poll() is None:
+            _mediamtx_proc.terminate()
+            _mediamtx_proc = None
+            messagebox.showinfo("MediaMTX", "MediaMTX stopped.")
+        else:
+            messagebox.showinfo("MediaMTX", "MediaMTX is not running.")
+    except Exception as e:
+        messagebox.showerror("MediaMTX", f"Failed to stop MediaMTX:\n{e}")
+
+def run_realtime_filtering():
+    """Launch Realtime_Filtering.py with the RTSP source."""
+    path = SCRIPT_PATHS.get("realtime")
+    if not path or not path.exists():
+        messagebox.showerror
 
 def hex_shift(hex_color: str, pct: float) -> str:
     """Lighten/darken a hex color by pct (-0.4..+0.4)."""
