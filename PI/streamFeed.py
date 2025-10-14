@@ -6,6 +6,7 @@ import socket
 import os
 import time
 
+
 MEDIAMTX_HOST = "0.0.0.0"
 RTSP_PORT = 8889
 CHECK_INTERVAL_MS = 1200
