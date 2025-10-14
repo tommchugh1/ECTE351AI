@@ -12,13 +12,7 @@ import atexit
 from pathlib import Path
 import socket
 import time
-<<<<<<< HEAD
-import Realtime_Filtering
-=======
 from openFeed import open_stream_popup
-
->>>>>>> a105767485d9ea399a90b1596592e706f94635c3
-
 
 # ===================== USER DATA =====================
 
@@ -44,11 +38,6 @@ CHECK_INTERVAL_MS = 800
 
 # Relative script paths
 working_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-<<<<<<< HEAD
-=======
-sys.path.insert(1, working_dir)
-from PI import streamFeed
->>>>>>> a105767485d9ea399a90b1596592e706f94635c3
 
 SCRIPT_PATHS = {
     "execute":   Path(os.path.join(working_dir, "AI", "execute.py")),

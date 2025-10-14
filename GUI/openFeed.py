@@ -6,7 +6,7 @@ import cv2
 import time
 
 class StreamPopup:
-    def __init__(self, parent, url, title="Live Stream", max_width=960, max_height=540):
+    def __init__(self, parent, url, title="Live Stream", max_width=640, max_height=640):
         self.parent = parent
         self.url = url
         self.max_w = max_width
@@ -146,7 +146,7 @@ def open_stream_popup(parent, url, title="Live Stream"):
 if __name__ == "__main__":
     # Minimal demo: run this file directly to test a URL
     import os
-    STREAM_URL_HTTP = os.environ.get("STREAM_URL", "http://127.0.0.1:8889/cam1")
+    STREAM_URL_HTTP = os.environ.get("STREAM_URL", "http://10.12.10.252:8889/cam1")
     root = tk.Tk()
     root.title("Popup Stream Demo")
     ttk.Button(root, text="Open Stream", command=lambda: open_stream_popup(root, STREAM_URL_HTTP)).pack(padx=12, pady=12)
