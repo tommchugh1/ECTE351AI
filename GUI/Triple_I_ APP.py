@@ -12,6 +12,7 @@ import atexit
 from pathlib import Path
 import socket
 import time
+from openFeed import open_stream_popup
 
 
 
@@ -40,7 +41,7 @@ CHECK_INTERVAL_MS = 800
 # Relative script paths
 working_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(1, working_dir)
-from PI import testStream
+from PI import streamFeed
 
 SCRIPT_PATHS = {
     "execute":   Path(os.path.join(working_dir, "AI", "execute.py")),
@@ -50,7 +51,7 @@ SCRIPT_PATHS = {
     "viz_one":   Path(os.path.join(working_dir, "VideoProcessing", "visualiseTXT.py")),
     "viz_batch": Path(os.path.join(working_dir, "VideoProcessing", "BatchVisualiseTXTBB.py")),
     # Optional local preview launcher; if absent we just open the URL
-    "stream":    Path(os.path.join(working_dir, "PI", "testStream.py")),
+    "stream":    Path(os.path.join(working_dir, "PI", "streamFeed.py")),
     # Realtime filtering script (OpenCV)
     "realtime":  Path(os.path.join(working_dir, "GUI", "Realtime_Filtering.py")),
 }
@@ -188,7 +189,7 @@ def run_script(path: Path, extra_args=None, extra_env=None):
 
 def open_live_feed():
     try:
-        webbrowser.open(STREAM_URL_HTTP)
+        open_stream_popup(root, STREAM_URL_HTTP, title="Camera Feed")
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open live feed URL:\n{e}")
 
