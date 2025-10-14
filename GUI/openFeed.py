@@ -215,3 +215,7 @@ class StreamPopup:
             except Exception:
                 pass
         self.win.after(120, _destroy)
+
+
+def open_stream_popup(parent, url, title="Livestream"):
+    return StreamPopup(parent, url, title=title)
