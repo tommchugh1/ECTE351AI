@@ -32,7 +32,7 @@ BTN_COLOR = "#007ACC"
 ENTRY_BG = "white"
 REMEMBER_FILE = "remember_me.txt"
 
-MEDIAMTX_HOST = "0.0.0.0"
+MEDIAMTX_HOST = "127.0.0.1"
 RTSP_PORT = 8889
 CHECK_INTERVAL_MS = 800
 
@@ -222,16 +222,30 @@ STREAM_DIR = load_stream_dir()
 
 def choose_stream_folder():
     global STREAM_DIR
-    folder = filedialog.askdirectory(title="Select folder that contains streamvideo.py")
+    folder = filedialog.askdirectory(title="Select MediaMTX folder (contains mediamtx and mediamtx.yml)")
     if not folder:
         return
     p = Path(folder)
-    if not (p / STREAM_FILENAME).exists():
-        messagebox.showerror("Stream", f"Could not find {STREAM_FILENAME} in:\n{p}")
+    binary = p / ("mediamtx.exe" if sys.platform.startswith("win") else "mediamtx")
+    config = p / "mediamtx.yml"  # or .yaml if you changed it
+
+    missing = []
+    if not binary.exists(): missing.append(str(binary.name))
+    if not config.exists(): missing.append(str(config.name))
+    if missing:
+        messagebox.showerror("MediaMTX", "Missing files in selected folder:\n" + "\n".join(missing))
         return
+
     STREAM_DIR = p
     save_stream_dir(p)
-    messagebox.showinfo("Stream", f"Media folder set to:\n{p}")
+
+    # re-point the controller
+    MTX.folder = p
+    MTX.binary = binary
+    MTX.config = config
+
+    messagebox.showinfo("MediaMTX", f"MediaMTX folder set to:\n{p}")
+
 
 # ---------- Flask Stream process mgmt ----------
 _stream_proc = None
@@ -469,59 +483,100 @@ def render_section(section, username):
 
     elif section == "camera":
         # --- Camera Control Tiles ---
+        # Button state references
+        state = {"starting": False}
+
+        def safe_start():
+            if state["starting"] or MTX.process_alive():
+                return
+            state["starting"] = True
+            start_btn_tile.configure(bg=hex_shift(COLORS["green"], -0.1))
+            try:
+                MTX.start()
+            except Exception as e:
+                messagebox.showerror("Stream", f"Failed to start MediaMTX:\n{e}")
+            finally:
+                # Allow short cooldown
+                root.after(1500, lambda: state.update(starting=False))
+
+        def safe_stop():
+            try:
+                MTX.stop()
+            except Exception as e:
+                messagebox.showerror("Stream", f"Failed to stop MediaMTX:\n{e}")
+
+        # --- Build Tiles ---
         tiles = [
             ("Set Media Folder",  "📁", COLORS["grey"],  choose_stream_folder),
-            ("Start Stream",      "🟢",  COLORS["green"], start_stream),
-            ("Stop Stream",       "🔴",  COLORS["pink"],  stop_stream),
+            ("Start Stream",      "🟢", COLORS["green"], safe_start),
+            ("Stop Stream",       "🔴", COLORS["pink"],  safe_stop),
             ("Open Live Feed",    "🌐", COLORS["peach"], open_live_feed),
-            ("Realtime Filtering","🪄",  COLORS["blue"],  run_realtime_filtering),
+            ("Realtime Filtering","🪄", COLORS["blue"],  run_realtime_filtering),
         ]
 
+        tile_refs = []
         for i, (title, icon, color, cmd) in enumerate(tiles):
             r, c = divmod(i, 3)
-            make_tile(tiles_frame, title, icon, color, cmd).grid(row=r, column=c, padx=TILE_PADX, pady=TILE_PADY)
+            tile = make_tile(tiles_frame, title, icon, color, cmd)
+            tile.grid(row=r, column=c, padx=TILE_PADX, pady=TILE_PADY)
+            tile_refs.append(tile)
+
+        # Keep easy handles to Start/Stop tiles
+        start_btn_tile = tile_refs[1].winfo_children()[0]  # inner tile Frame
+        stop_btn_tile  = tile_refs[2].winfo_children()[0]
 
         # --- Streaming Status Tile (6th Tile) ---
         status_tile_frame = tk.Frame(tiles_frame, bg="white")
-        tile_bg = COLORS["grey"]
-        status_tile = tk.Frame(status_tile_frame, bg=tile_bg, width=TILE_W, height=TILE_H,
-                            highlightthickness=1, highlightbackground="#b0b0b0",
-                            relief="flat", bd=2)
+        status_tile = tk.Frame(status_tile_frame, bg=COLORS["grey"],
+                               width=TILE_W, height=TILE_H,
+                               highlightthickness=1, highlightbackground="#b0b0b0",
+                               relief="flat", bd=2)
         status_tile.pack_propagate(False)
         status_tile.pack(padx=8, pady=(0, 8))
 
-        status_label = tk.Label(status_tile, text="Streaming: Stopped",
-                                bg=tile_bg, fg="black",
-                                font=("Arial", 16, "bold"), wraplength=TILE_W - 20)
+        status_label = tk.Label(status_tile, text="Streaming\nStopped",
+                                bg=COLORS["grey"], fg="black",
+                                font=("Arial", 16, "bold"),
+                                wraplength=TILE_W - 20, justify="center")
         status_label.pack(expand=True)
 
-        title_label = tk.Label(status_tile_frame, text="Status", font=LABEL_FONT, bg="white")
+        title_label = tk.Label(status_tile_frame, text="Status",
+                               font=LABEL_FONT, bg="white")
         title_label.pack()
 
-        # Place as 6th tile
         status_tile_frame.grid(row=1, column=2, padx=TILE_PADX, pady=TILE_PADY)
 
-        # --- Periodic Status Updater ---
+        # --- Non-blocking periodic status updater ---
         def update_status_tile():
-            st = MTX.status()
+            import threading
 
-            if st == "running":
-                bg = "#2aa745"  # green
-                fg = "white"
-                text = "Streaming\nActive"
-            elif st == "starting":
-                bg = "#e0a800"  # amber
-                fg = "black"
-                text = "Streaming\nStarting…"
-            else:
-                bg = "#c33"     # red
-                fg = "white"
-                text = "Streaming\nStopped"
+            def check():
+                st = MTX.status()
+                def paint():
+                    # Default
+                    bg, fg, text = COLORS["grey"], "black", "Streaming\nStopped"
 
-            # Apply colors and text
-            status_tile.config(bg=bg)
-            status_label.config(bg=bg, fg=fg, text=text)
-            title_label.config(bg="white")
+                    if st == "running":
+                        bg, fg, text = "#2aa745", "white", "Streaming\nActive"
+                        # Disable Start tile, enable Stop tile
+                        start_btn_tile.configure(bg="#8fd694")
+                        stop_btn_tile.configure(bg=COLORS["pink"])
+                    elif st == "starting":
+                        bg, fg, text = "#e0a800", "black", "Streaming\nStarting…"
+                    else:  # stopped
+                        bg, fg, text = "#c33", "white", "Streaming\nStopped"
+                        # Re-enable Start tile visually
+                        start_btn_tile.configure(bg=COLORS["green"])
+                        stop_btn_tile.configure(bg=hex_shift(COLORS["pink"], -0.2))
+
+                    # Apply colors and text
+                    status_tile.config(bg=bg)
+                    status_label.config(bg=bg, fg=fg, text=text)
+                    title_label.config(bg="white")
+
+                tiles_frame.after(0, paint)
+
+            threading.Thread(target=check, daemon=True).start()
             tiles_frame.after(CHECK_INTERVAL_MS, update_status_tile)
 
         update_status_tile()
