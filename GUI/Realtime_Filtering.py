@@ -24,7 +24,7 @@ class VideoFilterApp:
         self.video_label = tk.Label(root)
         self.video_label.pack(fill=tk.BOTH, expand=True)
 
-        self.cap = cv2.VideoCapture(0)
+        self.cap = cv2.VideoCapture("http://10.12.10.242:8889/cam1")
 
         # Start frame update loop
         self.update_frame()

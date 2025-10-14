@@ -1,6 +1,7 @@
 import tkinter as tk
 from PIL import Image, ImageTk
 import tkinter.messagebox as messagebox
+import os
 
 # Function to show login screen after splash
 def show_login():
@@ -19,7 +20,8 @@ splash_frame = tk.Frame(root, bg="white")
 splash_frame.pack(fill="both", expand=True)
 
 # Correct Windows-compatible image path
-logo_path = r"C:\Users\joypa\Downloads\test_logo.jpg"
+logo_dir = os.path.dirname(os.path.abspath(__file__))
+logo_path = os.path.join(logo_dir, "logo_final.jpg")
 
 try:
     logo_img = Image.open(logo_path)

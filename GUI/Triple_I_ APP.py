@@ -16,7 +16,7 @@ from pathlib import Path
 USERS = {
     "Joy Pasala": "7452408",
     "Jonathan Walsh": "pass1",
-    "Tom Mchugh": "6413717",
+    "Tom McHugh": "6413717",
     "Jacob Rhados": "8002812",
     "Jerome Eid": "pass4",
     "Jason Watson": "7678721",
@@ -30,25 +30,26 @@ ENTRY_BG = "white"
 REMEMBER_FILE = "remember_me.txt"
 
 # Absolute script paths (update as needed)
+working_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 SCRIPT_PATHS = {
-    "execute":   Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\execute.py"),
-    "train":     Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\AI\train.py"),
-    "auto":      Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\AutomateKdenlive.py"),
-    "xml2yolo":  Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\KdenliveXMLtoYOLOv8.py"),
-    "viz_one":   Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\visualiseTXT.py"),
-    "viz_batch": Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\BatchVisualiseTXTBB.py"),
+    "execute":   Path(os.path.join(working_dir, "AI", "execute.py")),
+    "train":     Path(os.path.join(working_dir, "AI", "train.py")),
+    "auto":      Path(os.path.join(working_dir, "VideoProcessing", "AutomateKdenlive.py")),
+    "xml2yolo":  Path(os.path.join(working_dir, "VideoProcessing", "KdenliveXMLtoYOLOv8.py")),
+    "viz_one":   Path(os.path.join(working_dir, "VideoProcessing", "visualiseTXT.py")),
+    "viz_batch": Path(os.path.join(working_dir, "VideoProcessing", "BatchVisualiseTXTBB.py")),
     # Optional local preview launcher; if absent we just open the URL
-    "stream":    Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\PI\streamvideo.py" \
-    ""),
+    "stream":    Path(os.path.join(working_dir, "PI", "testStream.py")),
     # Realtime filtering script (OpenCV)
-    "realtime":  Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\Realtime_Filtering.py"),
+    "realtime":  Path(os.path.join(working_dir, "GUI", "Realtime_Filtering.py")),
 }
 
 # Folder that should contain streamvideo.py (you can change in-app)
-DEFAULT_STREAM_DIR = Path(r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\PI\mediamtx")
+DEFAULT_STREAM_DIR = Path(os.path.join(working_dir, "PI", "mediamtx")),
 STREAM_DIR_FILE = Path("stream_folder.txt")  # remembers the chosen folder
 STREAM_FILENAME = "streamvideo.py"           # your Flask streamer
-STREAM_URL_HTTP = "http://127.0.0.1:5000/video_feed"
+STREAM_URL_HTTP = "http://10.12.10.242:8889/cam1"
 
 # Visual scale
 TITLE_FONT     = ("Arial", 28, "bold")
@@ -69,7 +70,7 @@ COLORS = {
 }
 
 # Logo (change if needed)
-LOGO_PATH = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\GUI\logo_final.jpg"
+logo_path = os.path.join(working_dir, "logo_final.jpg")
 
 # ===================== ROOT =====================
 

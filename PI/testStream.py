@@ -4,11 +4,10 @@ import subprocess
 import threading
 import socket
 import os
-import sys
 import time
 
-MEDIAMTX_HOST = "127.0.0.1"
-RTSP_PORT = 8554
+MEDIAMTX_HOST = "0.0.0.0"
+RTSP_PORT = 8889
 CHECK_INTERVAL_MS = 800
 
 class MediaMTXApp:
@@ -18,7 +17,7 @@ class MediaMTXApp:
         self.process = None
 
         self.script_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mediamtx")
-        self.binary_path = os.path.join(self.script_dir, "mediamtx.exe" if sys.platform.startswith("win") else "mediamtx")
+        self.binary_path = os.path.join(self.script_dir, "mediamtx")
         self.config_path = os.path.join(self.script_dir, "mediamtx.yml")
 
         frm = ttk.Frame(root, padding=12)
