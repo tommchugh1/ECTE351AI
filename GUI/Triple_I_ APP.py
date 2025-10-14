@@ -11,6 +11,9 @@ import sys
 import atexit
 from pathlib import Path
 
+
+
+
 # ===================== USER DATA =====================
 
 USERS = {
@@ -29,8 +32,14 @@ BTN_COLOR = "#007ACC"
 ENTRY_BG = "white"
 REMEMBER_FILE = "remember_me.txt"
 
-# Absolute script paths (update as needed)
+MEDIAMTX_HOST = "0.0.0.0"
+RTSP_PORT = 8889
+CHECK_INTERVAL_MS = 800
+
+# Relative script paths
 working_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(1, working_dir)
+from PI import testStream
 
 SCRIPT_PATHS = {
     "execute":   Path(os.path.join(working_dir, "AI", "execute.py")),
@@ -48,7 +57,7 @@ SCRIPT_PATHS = {
 # Folder that should contain streamvideo.py (you can change in-app)
 DEFAULT_STREAM_DIR = Path(os.path.join(working_dir, "PI", "mediamtx")),
 STREAM_DIR_FILE = Path("stream_folder.txt")  # remembers the chosen folder
-STREAM_FILENAME = "streamvideo.py"           # your Flask streamer
+STREAM_FILENAME = "testStream.py"           # Streaming 
 STREAM_URL_HTTP = "http://10.12.10.242:8889/cam1"
 
 # Visual scale
@@ -70,7 +79,7 @@ COLORS = {
 }
 
 # Logo (change if needed)
-logo_path = os.path.join(working_dir, "logo_final.jpg")
+logo_path = os.path.join(working_dir, "GUI", "logo_final.jpg")
 
 # ===================== ROOT =====================
 
@@ -165,8 +174,8 @@ _stream_proc = None
 def _stream_script_path() -> Path:
     return STREAM_DIR / STREAM_FILENAME
 
-def start_flask_stream():
-    """Start streamvideo.py (Flask MJPEG server on port 5000)."""
+def start_stream():
+    """Start streamvideo.py (Flask MJPEG server on port 5000).
     global _stream_proc
     spath = _stream_script_path()
     if not spath.exists():
@@ -180,8 +189,12 @@ def start_flask_stream():
         messagebox.showinfo("Stream", "Flask stream started.\nOpen Live Feed to view.")
     except Exception as e:
         messagebox.showerror("Stream", f"Failed to start stream:\n{e}")
+    """
+    stream = testStream.MediaMTXApp()
+    stream.start_server()
 
-def stop_flask_stream():
+
+def stop_stream():
     """Stop the Flask process if we started it."""
     global _stream_proc
     try:
@@ -197,7 +210,7 @@ def stop_flask_stream():
 
 def _shutdown():
     try:
-        stop_flask_stream()
+        stop_stream()
     except Exception:
         pass
 
@@ -259,15 +272,16 @@ def show_splash():
       .pack(pady=(20, 10))
 
     try:
-        img = Image.open(LOGO_PATH).resize((320, 320), Image.Resampling.LANCZOS)
+        img = Image.open(logo_path).resize((320, 320), Image.Resampling.LANCZOS)
         logo = ImageTk.PhotoImage(img)
         keep_image_ref(logo)
         tk.Label(splash, image=logo, bg=BG).pack(pady=(0, 6))
-        tk.Label(splash, text="Sponsored by Triple - I", font=("Arial", 12), bg=BG).pack()
     except Exception:
         tk.Label(splash, text="[Logo not found]", font=("Arial", 18), bg=BG).pack(pady=20)
 
-    root.after(1000, show_login)
+    #Temporary disable login
+    #root.after(1000, show_login)
+    root.after(1000, show_dashboard("Triple I"))
 
 def show_login():
     clear_root()
@@ -275,7 +289,7 @@ def show_login():
     login.place(relx=0.5, rely=0.40, anchor="center")  # slightly higher
 
     try:
-        img = Image.open(LOGO_PATH).resize((220, 220), Image.Resampling.LANCZOS)
+        img = Image.open(logo_path).resize((220, 220), Image.Resampling.LANCZOS)
         login_logo = ImageTk.PhotoImage(img)
         keep_image_ref(login_logo)
         tk.Label(login, image=login_logo, bg=BG).grid(row=0, column=0, columnspan=3, pady=(0, 8))
@@ -353,7 +367,7 @@ def show_dashboard(username):
 
     tk.Label(main, text="Welcome to YourQualityCheck", font=TITLE_FONT, bg="white").pack(pady=(18, 6))
     try:
-        img = Image.open(LOGO_PATH).resize((220, 220), Image.Resampling.LANCZOS)
+        img = Image.open(logo_path).resize((220, 220), Image.Resampling.LANCZOS)
         logo = ImageTk.PhotoImage(img); keep_image_ref(logo)
         tk.Label(main, image=logo, bg="white").pack()
         tk.Label(main, text="Sponsored by Triple - I", bg="white", font=("Arial", 12)).pack(pady=(2, 26))
@@ -420,8 +434,8 @@ def render_section(section, username):
     elif section == "camera":
         tiles = [
             ("Set Media Folder",  "📁", COLORS["grey"],  choose_stream_folder),
-            ("Start Flask Stream","▶️", COLORS["green"], start_flask_stream),
-            ("Stop Flask Stream", "⏹", COLORS["pink"],  stop_flask_stream),
+            ("Start Stream","▶️", COLORS["green"], start_stream),
+            ("Stop Stream", "⏹", COLORS["pink"],  stop_stream),
             ("Open Live Feed",    "🌐", COLORS["peach"], open_live_feed),
             ("Realtime Filtering","🪄", COLORS["blue"],  run_realtime_filtering),
         ]
