@@ -17,9 +17,9 @@ class MediaMTXApp:
         self.root.title("MediaMTX Controller")
         self.process = None
 
-        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.script_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mediamtx")
         self.binary_path = os.path.join(self.script_dir, "mediamtx.exe" if sys.platform.startswith("win") else "mediamtx")
-        self.config_path = os.path.join(self.script_dir, "mediamtx.yaml")
+        self.config_path = os.path.join(self.script_dir, "mediamtx.yml")
 
         frm = ttk.Frame(root, padding=12)
         frm.pack(fill="both", expand=True)
@@ -74,7 +74,7 @@ class MediaMTXApp:
                     self.process.kill()
             except Exception as e:
                 messagebox.showerror("MediaMTX", f"Failed to stop:\n{e}")
-
+            
     def _port_open(self, host, port, timeout=0.25):
         try:
             with socket.create_connection((host, port), timeout=timeout):
