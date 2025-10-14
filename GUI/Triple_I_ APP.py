@@ -88,13 +88,13 @@ class MediaMTXController:
         self.host = host
         self.port = port
         self.proc = None
-        # Where mediamtx + mediamtx.yaml live; default to same folder as your PI/mediamtx
+        # Where mediamtx + mediamtx.yml live; default to same folder as your PI/mediamtx
         if folder is None:
             self.folder = Path(os.path.join(working_dir, "PI", "mediamtx"))
         else:
             self.folder = Path(folder)
         self.binary = self.folder / ("mediamtx.exe" if sys.platform.startswith("win") else "mediamtx")
-        self.config = self.folder / "mediamtx.yaml"
+        self.config = self.folder / "mediamtx.yml"
 
     def start(self):
         if self.proc and self.proc.poll() is None:
@@ -152,7 +152,8 @@ class MediaMTXController:
 root = tk.Tk()
 MTX = MediaMTXController()
 root.title("YourQualityCheck")
-root.state("zoomed")
+#root.state("zoomed")
+root.attributes('-fullscreen', True)
 root.configure(bg=BG)
 root.resizable(False, False)
 
@@ -417,7 +418,7 @@ def show_dashboard(username):
 
     tiles = [
         ("Profile",       "👤", COLORS["grey"],  lambda: render_section("profile", username)),
-        ("Inventory",     "🧊", COLORS["blue"],  lambda: render_section("inventory", username)),
+        ("Inventory",     "📦", COLORS["blue"],  lambda: render_section("inventory", username)),
         ("Camera Feed",   "📷", COLORS["peach"], lambda: render_section("camera", username)),
         ("Photo Gallery", "🖼", COLORS["green"], lambda: render_section("gallery", username)),
         ("Logout",        "📱", COLORS["pink"],  show_login),
@@ -474,8 +475,8 @@ def render_section(section, username):
         # --- Camera Control Tiles ---
         tiles = [
             ("Set Media Folder",  "📁", COLORS["grey"],  choose_stream_folder),
-            ("Start Stream",      "▶️",  COLORS["green"], start_stream),
-            ("Stop Stream",       "⏹",  COLORS["pink"],  stop_stream),
+            ("Start Stream",      "🟢",  COLORS["green"], start_stream),
+            ("Stop Stream",       "🔴",  COLORS["pink"],  stop_stream),
             ("Open Live Feed",    "🌐", COLORS["peach"], open_live_feed),
             ("Realtime Filtering","🪄",  COLORS["blue"],  run_realtime_filtering),
         ]
