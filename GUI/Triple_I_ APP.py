@@ -12,7 +12,8 @@ import atexit
 from pathlib import Path
 import socket
 import time
-from openFeed import StreamPopup
+from openFeed import open_stream_popup
+
 # ===================== USER DATA =====================
 
 USERS = {
@@ -184,7 +185,7 @@ def run_script(path: Path, extra_args=None, extra_env=None):
 
 def open_live_feed():
     try:
-        StreamPopup(root, STREAM_URL_HTTP, title="Camera Feed")
+        open_stream_popup(root, STREAM_URL_HTTP, title="Camera Feed")
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open live feed URL:\n{e}")
 
