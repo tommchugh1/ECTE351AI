@@ -12,7 +12,7 @@ import atexit
 from pathlib import Path
 import socket
 import time
-
+import Realtime_Filtering
 
 
 # ===================== USER DATA =====================
@@ -39,8 +39,6 @@ CHECK_INTERVAL_MS = 800
 
 # Relative script paths
 working_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(1, working_dir)
-from PI import testStream
 
 SCRIPT_PATHS = {
     "execute":   Path(os.path.join(working_dir, "AI", "execute.py")),
@@ -56,7 +54,7 @@ SCRIPT_PATHS = {
 }
 
 # Folder that should contain streamvideo.py (you can change in-app)
-DEFAULT_STREAM_DIR = Path(os.path.join(working_dir, "PI", "mediamtx")),
+DEFAULT_STREAM_DIR = Path(os.path.join(working_dir, "PI", "mediamtx"))
 STREAM_DIR_FILE = Path("stream_folder.txt")  # remembers the chosen folder
 STREAM_FILENAME = "testStream.py"           # Streaming 
 STREAM_URL_HTTP = "http://10.12.10.242:8889/cam1"
@@ -132,7 +130,7 @@ class MediaMTXController:
     def process_alive(self):
         return self.proc is not None and self.proc.poll() is None
 
-    def port_open(self, timeout=0.25):
+    def port_open(self, timeout=0.05):
         if not self.process_alive():
             return False
         try:
@@ -321,7 +319,7 @@ def show_splash():
 
     #Temporary disable login
     #root.after(1000, show_login)
-    root.after(1000, show_dashboard("Triple I"))
+    root.after(1000, lambda: show_dashboard("Triple I"))
 
 def show_login():
     clear_root()
@@ -410,7 +408,6 @@ def show_dashboard(username):
         img = Image.open(logo_path).resize((220, 220), Image.Resampling.LANCZOS)
         logo = ImageTk.PhotoImage(img); keep_image_ref(logo)
         tk.Label(main, image=logo, bg="white").pack()
-        tk.Label(main, text="Sponsored by Triple - I", bg="white", font=("Arial", 12)).pack(pady=(2, 26))
     except Exception:
         tk.Label(main, text="QuAck", font=("Arial", 22, "bold"), bg="white").pack(pady=(2, 26))
 

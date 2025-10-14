@@ -8,7 +8,7 @@ import time
 
 MEDIAMTX_HOST = "0.0.0.0"
 RTSP_PORT = 8889
-CHECK_INTERVAL_MS = 800
+CHECK_INTERVAL_MS = 1200
 
 class MediaMTXApp:
     def __init__(self, root):
@@ -74,7 +74,7 @@ class MediaMTXApp:
             except Exception as e:
                 messagebox.showerror("MediaMTX", f"Failed to stop:\n{e}")
             
-    def _port_open(self, host, port, timeout=0.25):
+    def _port_open(self, host, port, timeout=0.05):
         try:
             with socket.create_connection((host, port), timeout=timeout):
                 return True
