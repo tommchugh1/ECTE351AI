@@ -3,8 +3,8 @@ import os
 import re
 
 # === CONFIG ===
-input_xml = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\InputNormalOutputFiltered.kdenlive"
-image_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\250916 1600"
+input_xml = r"C:\Users\Group8\Desktop\Yolo Demo\ECTE351AI\VideoProcessing\InputNormalOutputFiltered_2025-10-10 16-37-24.kdenlive"
+image_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\251012"
 output_label_folder = os.path.join(image_folder, "labels")
 image_width = 1920
 image_height = 1080

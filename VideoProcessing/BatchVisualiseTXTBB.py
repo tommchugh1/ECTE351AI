@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 # --- CONFIG ---
-input_folder = r"C:\Users\Group8\Desktop\Label improvement\03 correct corelation for non global time for id coordinates"  # folder with .txt files
+input_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\251012\labels"  # folder with .txt files
 image_width = 1920
 image_height = 1080
 class_colors = {0: "red", 1: "blue", 2: "green", 3: "yellow"}
-output_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\250916 1600\labels\2329 BoundingBoxVisualised"  # Folder where images will be saved
+output_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\251012\labels\BB Vis"  # Folder where images will be saved
 
 # --- Create output directory if it doesn't exist ---
 if not os.path.exists(output_folder):

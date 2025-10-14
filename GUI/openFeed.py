@@ -216,6 +216,5 @@ class StreamPopup:
                 pass
         self.win.after(120, _destroy)
 
-
-def open_stream_popup(parent, url, title="Livestream"):
+def open_stream_popup(parent, url, title="Live Stream"):
     return StreamPopup(parent, url, title=title)
