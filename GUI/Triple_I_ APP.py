@@ -10,7 +10,8 @@ import subprocess
 import sys
 import atexit
 from pathlib import Path
-
+import socket
+import time
 
 
 
@@ -81,9 +82,75 @@ COLORS = {
 # Logo (change if needed)
 logo_path = os.path.join(working_dir, "GUI", "logo_final.jpg")
 
+# ---- MediaMTX headless controller (no UI) ----
+class MediaMTXController:
+    def __init__(self, host=MEDIAMTX_HOST, port=RTSP_PORT, folder=None):
+        self.host = host
+        self.port = port
+        self.proc = None
+        # Where mediamtx + mediamtx.yaml live; default to same folder as your PI/mediamtx
+        if folder is None:
+            self.folder = Path(os.path.join(working_dir, "PI", "mediamtx"))
+        else:
+            self.folder = Path(folder)
+        self.binary = self.folder / ("mediamtx.exe" if sys.platform.startswith("win") else "mediamtx")
+        self.config = self.folder / "mediamtx.yaml"
+
+    def start(self):
+        if self.proc and self.proc.poll() is None:
+            return
+        if not self.binary.exists():
+            messagebox.showerror("MediaMTX", f"Binary not found:\n{self.binary}")
+            return
+        if not self.config.exists():
+            messagebox.showerror("MediaMTX", f"Config not found:\n{self.config}")
+            return
+        try:
+            with open(os.devnull, "wb") as devnull:
+                self.proc = subprocess.Popen(
+                    [str(self.binary), str(self.config)],
+                    cwd=str(self.folder),
+                    stdout=devnull,
+                    stderr=devnull
+                )
+        except Exception as e:
+            messagebox.showerror("MediaMTX", f"Failed to start:\n{e}")
+
+    def stop(self):
+        if self.proc and self.proc.poll() is None:
+            try:
+                self.proc.terminate()
+                deadline = time.time() + 2.5
+                while time.time() < deadline and self.proc.poll() is None:
+                    time.sleep(0.1)
+                if self.proc.poll() is None:
+                    self.proc.kill()
+            except Exception as e:
+                messagebox.showerror("MediaMTX", f"Failed to stop:\n{e}")
+        self.proc = None
+
+    def process_alive(self):
+        return self.proc is not None and self.proc.poll() is None
+
+    def port_open(self, timeout=0.25):
+        if not self.process_alive():
+            return False
+        try:
+            with socket.create_connection((self.host, self.port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    def status(self):
+        if self.process_alive():
+            return "running" if self.port_open() else "starting"
+        return "stopped"
+
+
 # ===================== ROOT =====================
 
 root = tk.Tk()
+MTX = MediaMTXController()
 root.title("YourQualityCheck")
 root.state("zoomed")
 root.configure(bg=BG)
@@ -175,38 +242,10 @@ def _stream_script_path() -> Path:
     return STREAM_DIR / STREAM_FILENAME
 
 def start_stream():
-    """Start streamvideo.py (Flask MJPEG server on port 5000).
-    global _stream_proc
-    spath = _stream_script_path()
-    if not spath.exists():
-        messagebox.showerror("Stream", f"Could not find {STREAM_FILENAME}:\n{spath}\n\nPlease check the path.")
-        return
-    if _stream_proc and _stream_proc.poll() is None:
-        messagebox.showinfo("Stream", "Flask stream is already running.")
-        return
-    try:
-        _stream_proc = subprocess.Popen([sys.executable, str(spath)], cwd=str(spath.parent))
-        messagebox.showinfo("Stream", "Flask stream started.\nOpen Live Feed to view.")
-    except Exception as e:
-        messagebox.showerror("Stream", f"Failed to start stream:\n{e}")
-    """
-    stream = testStream.MediaMTXApp()
-    stream.start_server()
-
+    MTX.start()
 
 def stop_stream():
-    """Stop the Flask process if we started it."""
-    global _stream_proc
-    try:
-        if _stream_proc and _stream_proc.poll() is None:
-            _stream_proc.terminate()
-            _stream_proc.wait(timeout=3)
-            _stream_proc = None
-            messagebox.showinfo("Stream", "Flask stream stopped.")
-        else:
-            messagebox.showinfo("Stream", "Flask stream is not running.")
-    except Exception as e:
-        messagebox.showerror("Stream", f"Failed to stop stream:\n{e}")
+    MTX.stop()
 
 def _shutdown():
     try:
@@ -432,16 +471,65 @@ def render_section(section, username):
             make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
 
     elif section == "camera":
+        # --- Camera Control Tiles ---
         tiles = [
             ("Set Media Folder",  "📁", COLORS["grey"],  choose_stream_folder),
-            ("Start Stream","▶️", COLORS["green"], start_stream),
-            ("Stop Stream", "⏹", COLORS["pink"],  stop_stream),
+            ("Start Stream",      "▶️",  COLORS["green"], start_stream),
+            ("Stop Stream",       "⏹",  COLORS["pink"],  stop_stream),
             ("Open Live Feed",    "🌐", COLORS["peach"], open_live_feed),
-            ("Realtime Filtering","🪄", COLORS["blue"],  run_realtime_filtering),
+            ("Realtime Filtering","🪄",  COLORS["blue"],  run_realtime_filtering),
         ]
+
         for i, (title, icon, color, cmd) in enumerate(tiles):
-            r, c = divmod(i, 3)  # up to 3 tiles per row
+            r, c = divmod(i, 3)
             make_tile(tiles_frame, title, icon, color, cmd).grid(row=r, column=c, padx=TILE_PADX, pady=TILE_PADY)
+
+        # --- Streaming Status Tile (6th Tile) ---
+        status_tile_frame = tk.Frame(tiles_frame, bg="white")
+        tile_bg = COLORS["grey"]
+        status_tile = tk.Frame(status_tile_frame, bg=tile_bg, width=TILE_W, height=TILE_H,
+                            highlightthickness=1, highlightbackground="#b0b0b0",
+                            relief="flat", bd=2)
+        status_tile.pack_propagate(False)
+        status_tile.pack(padx=8, pady=(0, 8))
+
+        status_label = tk.Label(status_tile, text="Streaming: Stopped",
+                                bg=tile_bg, fg="black",
+                                font=("Arial", 16, "bold"), wraplength=TILE_W - 20)
+        status_label.pack(expand=True)
+
+        title_label = tk.Label(status_tile_frame, text="Status", font=LABEL_FONT, bg="white")
+        title_label.pack()
+
+        # Place as 6th tile
+        status_tile_frame.grid(row=1, column=2, padx=TILE_PADX, pady=TILE_PADY)
+
+        # --- Periodic Status Updater ---
+        def update_status_tile():
+            st = MTX.status()
+
+            if st == "running":
+                bg = "#2aa745"  # green
+                fg = "white"
+                text = "Streaming\nActive"
+            elif st == "starting":
+                bg = "#e0a800"  # amber
+                fg = "black"
+                text = "Streaming\nStarting…"
+            else:
+                bg = "#c33"     # red
+                fg = "white"
+                text = "Streaming\nStopped"
+
+            # Apply colors and text
+            status_tile.config(bg=bg)
+            status_label.config(bg=bg, fg=fg, text=text)
+            title_label.config(bg="white")
+            tiles_frame.after(CHECK_INTERVAL_MS, update_status_tile)
+
+        update_status_tile()
+
+
 
     elif section == "gallery":
         tiles = [
