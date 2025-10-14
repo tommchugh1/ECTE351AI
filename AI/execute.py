@@ -4,11 +4,14 @@ import cv2
 import time
 from openvino.runtime import Core
 
-
-# Verify Intel GPU availability
 core = Core()
-devices = core.available_devices
-print(f"Available devices: {devices}")
+devices = core.available_devices or []   # None-safe
+device = "CPU"
+if any("GPU" in d.upper() for d in devices):
+    device = "GPU"
+
+print(f"OpenVINO devices: {devices} — using: {device}")
+
 # Auto-select best available OpenVINO device
 if any("GPU" in d for d in devices):
     device = "GPU"
@@ -106,6 +109,10 @@ def testProcessor(iterations, model, image_path):
     class_names = model.names  # get class names from model
 
     # Draw all boxes manually on the image
+    results = model(image)  
+    if results is None:
+        results = []        # safe default
+
     for r in results:
         boxes = r.boxes
         for box in boxes:

@@ -343,7 +343,7 @@
  <chain id="chain0" out="00:00:32.440">
   <property name="length">812</property>
   <property name="eof">pause</property>
-  <property name="resource">C:/Users/Group8/Documents/ModelTrainingData/ImportVideo/2025-09-12 15-52-35.mkv</property>
+  <property name="resource">C:/Users/Group8/Documents/ModelTrainingData/ImportVideo/251012/2025-10-10 16-37-24.mp4</property>
   <property name="mlt_service">avformat-novalidate</property>
   <property name="seekable">1</property>
   <property name="audio_index">1</property>
@@ -444,7 +444,7 @@
  <chain id="chain1" out="00:00:32.440">
   <property name="length">812</property>
   <property name="eof">pause</property>
-  <property name="resource">C:/Users/Group8/Documents/ModelTrainingData/ImportVideo/2025-09-12 15-52-35.mkv</property>
+  <property name="resource">C:/Users/Group8/Documents/ModelTrainingData/ImportVideo/251012/2025-10-10 16-37-24.mp4</property>
   <property name="mlt_service">avformat-novalidate</property>
   <property name="seekable">1</property>
   <property name="audio_index">1</property>
@@ -545,7 +545,7 @@
  <chain id="chain2" out="00:00:32.440">
   <property name="length">812</property>
   <property name="eof">pause</property>
-  <property name="resource">C:/Users/Group8/Documents/ModelTrainingData/ImportVideo/2025-09-12 15-52-35.mkv</property>
+  <property name="resource">C:/Users/Group8/Documents/ModelTrainingData/ImportVideo/251012/2025-10-10 16-37-24.mp4</property>
   <property name="mlt_service">avformat-novalidate</property>
   <property name="seekable">1</property>
   <property name="audio_index">1</property>
@@ -795,7 +795,7 @@
  <chain id="chain3" out="00:00:32.440">
   <property name="length">812</property>
   <property name="eof">pause</property>
-  <property name="resource">C:/Users/Group8/Documents/ModelTrainingData/ImportVideo/2025-09-12 15-52-35.mkv</property>
+  <property name="resource">C:/Users/Group8/Documents/ModelTrainingData/ImportVideo/251012/2025-10-10 16-37-24.mp4</property>
   <property name="mlt_service">avformat-novalidate</property>
   <property name="seekable">1</property>
   <property name="audio_index">1</property>
@@ -1368,7 +1368,7 @@
  <chain id="chain4" out="00:00:32.440">
   <property name="length">812</property>
   <property name="eof">pause</property>
-  <property name="resource">C:/Users/Group8/Documents/ModelTrainingData/ImportVideo/2025-09-12 15-52-35.mkv</property>
+  <property name="resource">C:/Users/Group8/Documents/ModelTrainingData/ImportVideo/251012/2025-10-10 16-37-24.mp4</property>
   <property name="mlt_service">avformat-novalidate</property>
   <property name="meta.media.nb_streams">2</property>
   <property name="meta.media.0.stream.type">video</property>
