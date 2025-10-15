@@ -56,7 +56,7 @@ SCRIPT_PATHS = {
 DEFAULT_STREAM_DIR = Path(os.path.join(working_dir, "PI", "mediamtx"))
 STREAM_DIR_FILE = Path("stream_folder.txt")  # remembers the chosen folder
 STREAM_FILENAME = "testStream.py"           # Streaming 
-STREAM_URL_HTTP = "http://10.12.10.242:8889/cam1"
+STREAM_URL_HTTP = "rtsp://10.12.10.242:8554/cam1"
 
 # Visual scale
 TITLE_FONT     = ("Arial", 28, "bold")
