@@ -270,14 +270,6 @@ atexit.register(_shutdown)
 
 # ---------- Realtime Filtering (consumes MJPEG URL) ----------
 def run_realtime_filtering():
-    '''
-    path = SCRIPT_PATHS.get("realtime")
-    if not path or not path.exists():
-        messagebox.showerror("Realtime Filtering", f"Realtime_Filtering.py not found:\n{path}")
-        return
-    # Many OpenCV scripts accept the URL as argv[1]; also pass in env
-    run_script(path, extra_args=[STREAM_URL_HTTP], extra_env={"STREAM_URL": STREAM_URL_HTTP})
-    '''
     open_filtered_popup(root, STREAM_URL_HTTP)
 
 # ===================== TILES (with hover) =====================
