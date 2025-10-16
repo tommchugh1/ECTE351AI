@@ -168,12 +168,12 @@ class FilteredStreamPopup:
         self.win.after(100, self.win.destroy)
 
 
-# 🔄 Helper function
+# Helper function
 def open_filtered_popup(parent, url, title="Filtered Stream"):
     return FilteredStreamPopup(parent, url, title=title)
 
 
-# 🔧 Standalone test
+# Standalone test
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("Test Filtered Stream")
