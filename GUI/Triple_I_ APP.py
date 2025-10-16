@@ -9,7 +9,6 @@ import subprocess
 import sys
 from pathlib import Path
 import socket
-import time
 import threading
 import cv2
 from datetime import datetime
@@ -17,7 +16,6 @@ from openFeed import open_stream_popup
 from Realtime_Filtering import open_filtered_popup
 from statusUpdater import (
     StatusMonitor,
-    check_status_rtsp_port,
     nudge_monitor_fast
 )
 # USER DATA 
