@@ -9,7 +9,7 @@ from pathlib import Path
 working_dir = os.path.dirname(os.path.abspath(__file__))
 HOST = "0.0.0.0"   
 PORT = 9001        
-MEDIA_MTX_PATH = os.path.join(working_dir, "mediamtx")  
+MEDIA_MTX_PATH = os.path.join(working_dir, "mediamtx", "mediamtx")  
 CONFIG_FILE = os.path.join(working_dir, "mediamtx.yml")
 
 active_process = None
@@ -142,7 +142,7 @@ def main():
     print(f"[PI] Camera control server listening on {HOST}:{PORT}")
     # Pre-flight: print paths to help debugging
     print(f"[PI] MediaMTX: {MEDIA_MTX_PATH}")
-    print(f"[PI] Config  : {CONFIG_FILE}  (USE_DASH_CONFIG={USE_DASH_CONFIG})")
+    print(f"[PI] Config  : {CONFIG_FILE}")
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
