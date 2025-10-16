@@ -7,7 +7,7 @@ import os
 import time
 
 
-MEDIAMTX_HOST = "0.0.0.0"
+MEDIAMTX_HOST = "127.0.0.1"
 RTSP_PORT = 8889
 CHECK_INTERVAL_MS = 1200
 

@@ -34,8 +34,6 @@ image_path = os.path.join(header, "RUNS", "train", "bolt_training", "image.jpg")
 model_path = os.path.join(header, "RUNS", "train", "bolt_training", "weights", "best.pt")
 openvino_model_path = os.path.join(header, "RUNS", "train", "bolt_training", "weights", "best_openvino_model")
 
-frame = header + "\\RUNS\\train\\bolt_training\\image.jpg"
-
 # Verify file paths
 if not os.path.exists(image_path):
     print(f"Image file not found: {image_path}")
@@ -52,18 +50,6 @@ except Exception as e:
     print(f"Failed to load YOLOv8 model: {e}")
     exit(1)
 
-# Export to OpenVINO format if not already exported
-try:
-    if not os.path.exists(openvino_model_path):
-        print("Exporting model to OpenVINO format...")
-        model.export(format="openvino")
-        print("Model exported to OpenVINO format.")
-    else:
-        print("OpenVINO model already exists, skipping export.")
-except Exception as e:
-    print(f"Failed to export model to OpenVINO: {e}")
-    exit(1)
-
 # Load OpenVINO model
 try:
     ov_model = YOLO(openvino_model_path, task="detect")
@@ -71,6 +57,52 @@ try:
 except Exception as e:
     print(f"Failed to load OpenVINO model: {e}")
     exit(1)
+
+def _iou_xyxy(a, b):
+    (ax1, ay1, ax2, ay2) = a
+    (bx1, by1, bx2, by2) = b
+    inter_x1 = max(ax1, bx1)
+    inter_y1 = max(ay1, by1)
+    inter_x2 = min(ax2, bx2)
+    inter_y2 = min(ay2, by2)
+    iw = max(0, inter_x2 - inter_x1)
+    ih = max(0, inter_y2 - inter_y1)
+    inter = iw * ih
+    if inter == 0:
+        return 0.0
+    area_a = (ax2 - ax1) * (ay2 - ay1)
+    area_b = (bx2 - bx1) * (by2 - by1)
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+def suppress_overlaps_keep_best(dets, iou_thr=0.5, class_aware=True):
+    """
+    dets: list of dicts like
+        {'xyxy': (x1,y1,x2,y2), 'conf': float, 'cls': int}
+    Returns: filtered list with overlapping boxes removed, keeping the highest-conf one.
+    """
+    if not dets:
+        return []
+
+    # Sort by confidence (desc)
+    dets_sorted = sorted(dets, key=lambda d: d['conf'], reverse=True)
+    kept = []
+
+    for d in dets_sorted:
+        keep = True
+        for k in kept:
+            if class_aware and (d['cls'] != k['cls']):
+                continue
+            if _iou_xyxy(d['xyxy'], k['xyxy']) > iou_thr:
+                # Overlaps with a higher-conf kept box -> drop it
+                keep = False
+                break
+        if keep:
+            kept.append(d)
+
+    return kept
+
+
 
 def testProcessor(iterations, model, image_path):
     print(f"Benchmarking on OpenVINO device for {iterations} iterations...")
@@ -110,21 +142,35 @@ def testProcessor(iterations, model, image_path):
 
     # Draw all boxes manually on the image
     results = model(image)  
-    if results is None:
-        results = []        # safe default
-
-    for r in results:
-        boxes = r.boxes
+    # ---- Build detections list from Ultralytics results ----
+    dets = []
+    for r in results or []:
+        boxes = getattr(r, "boxes", None)
+        if boxes is None:
+            continue
         for box in boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             conf = float(box.conf[0])
             cls_id = int(box.cls[0])
-            label = class_names[cls_id] if class_names else str(cls_id)
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(image, f"{label} {conf:.2f}", (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            dets.append({"xyxy": (x1, y1, x2, y2), "conf": conf, "cls": cls_id})
 
-            print(f"Class: {cls_id}, Confidence: {conf:.2f}, Box: ({x1}, {y1}, {x2}, {y2})")
+    # ---- Suppress overlaps (keep highest confidence) ----
+    # Set class_aware=True to only merge overlaps within same class
+    filtered = suppress_overlaps_keep_best(dets, iou_thr=0.50, class_aware=True)
+
+    # ---- Draw filtered boxes ----
+    class_names = model.names  # from your loaded model
+    for d in filtered:
+        (x1, y1, x2, y2) = d["xyxy"]
+        conf = d["conf"]
+        cls_id = d["cls"]
+        label = class_names[cls_id] if class_names else str(cls_id)
+
+        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.putText(image, f"{label} {conf:.2f}", (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+        print(f"Class: {cls_id}, Confidence: {conf:.2f}, Box: ({x1}, {y1}, {x2}, {y2})")
 
     # Save and show annotated image
     output_path = os.path.join(header, "RUNS", "train", "bolt_training", "inference_image.jpg")

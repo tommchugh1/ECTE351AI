@@ -30,7 +30,7 @@ class FilteredStreamPopup:
         # Setup popup window
         self.win = tk.Toplevel(parent)
         self.win.title(title)
-        self.win.geometry("900x700")
+        self.win.geometry("640x640")
         self.win.protocol("WM_DELETE_WINDOW", self._on_close)
 
         # Layout
