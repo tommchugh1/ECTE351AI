@@ -23,9 +23,9 @@ class FilteredStreamPopup:
         self.enable_zoom = True
 
         # Filter settings
-        self.rotate_angle = 45
-        self.zoom_scale = 1.5
-        self.threshold_val = 100
+        self.rotate_angle = 0
+        self.zoom_scale = 1
+        self.threshold_val = 200
 
         # Setup popup window
         self.win = tk.Toplevel(parent)

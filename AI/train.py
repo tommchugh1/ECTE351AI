@@ -54,7 +54,7 @@ if __name__ == '__main__':
         'batch': 16,          # Batch size
         'imgsz': 640,         # Image size
         'device': device,
-        'patience': 50,       # Early stopping patience
+        'patience': 20,       # Early stopping patience
         'project': project_dir,
         'name': experiment_name,
         'exist_ok': True,     # Overwrite existing results
