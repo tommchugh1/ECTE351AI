@@ -2,20 +2,25 @@
 
 import tkinter as tk
 import tkinter.font as tkfont
-from tkinter import messagebox, filedialog
+from tkinter import messagebox
 from PIL import Image, ImageTk
 import os
-import webbrowser
 import subprocess
 import sys
-import atexit
 from pathlib import Path
 import socket
 import time
+import threading
+import cv2
+from datetime import datetime
 from openFeed import open_stream_popup
 from Realtime_Filtering import open_filtered_popup
-
-# ===================== USER DATA =====================
+from statusUpdater import (
+    StatusMonitor,
+    check_status_rtsp_port,
+    nudge_monitor_fast
+)
+# USER DATA 
 
 USERS = {
     "Joy Pasala": "7452408",
@@ -26,16 +31,17 @@ USERS = {
     "Jason Watson": "7678721",
 }
 
-# ===================== PATHS / CONSTANTS =====================
+# PATHS / CONSTANTS 
 
 BG = "#ffffff"
 BTN_COLOR = "#007ACC"
 ENTRY_BG = "white"
 REMEMBER_FILE = "remember_me.txt"
 
-MEDIAMTX_HOST = "127.0.0.1"
-RTSP_PORT = 8889
+PI_HOST = "10.27.27.10"
+RTSP_TCP_PORT = 8554
 CHECK_INTERVAL_MS = 800
+STREAM_URL_RTSP = f"rtsp://{PI_HOST}:{RTSP_TCP_PORT}/cam1"
 
 # Relative script paths
 working_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,11 +59,6 @@ SCRIPT_PATHS = {
     "realtime":  Path(os.path.join(working_dir, "GUI", "Realtime_Filtering.py")),
 }
 
-# Folder that should contain streamvideo.py (you can change in-app)
-DEFAULT_STREAM_DIR = Path(os.path.join(working_dir, "PI", "mediamtx"))
-STREAM_DIR_FILE = Path("stream_folder.txt")  # remembers the chosen folder
-STREAM_FILENAME = "testStream.py"           # Streaming 
-STREAM_URL_HTTP = "rtsp://10.12.10.242:8554/cam1"
 
 # Visual scale
 TITLE_FONT     = ("Arial", 28, "bold")
@@ -75,82 +76,34 @@ COLORS = {
     "peach": "#ffe0b2",
     "green": "#c8e6c9",
     "pink":  "#ffcdd2",
+    "yellow": '#FFEE8C'
 }
 
 # Logo (change if needed)
 logo_path = os.path.join(working_dir, "GUI", "logo_final.jpg")
 
-# ---- MediaMTX headless controller (no UI) ----
-class MediaMTXController:
-    def __init__(self, host=MEDIAMTX_HOST, port=RTSP_PORT, folder=None):
-        self.host = host
-        self.port = port
-        self.proc = None
-        # Where mediamtx + mediamtx.yml live; default to same folder as your PI/mediamtx
-        if folder is None:
-            self.folder = Path(os.path.join(working_dir, "PI", "mediamtx"))
-        else:
-            self.folder = Path(folder)
-        self.binary = self.folder / ("mediamtx.exe" if sys.platform.startswith("win") else "mediamtx")
-        self.config = self.folder / "mediamtx.yml"
+# Sends command to Pi to start feed.
+def send_command_to_pi(command: str, pi_ip: str = PI_HOST, port: int = 9001) -> str:
+    
+    # Sends 'start_feed' or 'stop_feed' to the socket server on the Pi.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1.5)
+            s.connect((pi_ip, port))
+            s.sendall(command.encode("utf-8"))
+            response = s.recv(1024).decode("utf-8", errors="ignore")
+            print(f"[Pi Response] {response}")
+            return response
+    except Exception as e:
+        print(f"[ERROR] Failed to send command to {pi_ip}:{port} -> {e}")
+        return "ERROR"
 
-    def start(self):
-        if self.proc and self.proc.poll() is None:
-            return
-        if not self.binary.exists():
-            messagebox.showerror("MediaMTX", f"Binary not found:\n{self.binary}")
-            return
-        if not self.config.exists():
-            messagebox.showerror("MediaMTX", f"Config not found:\n{self.config}")
-            return
-        try:
-            with open(os.devnull, "wb") as devnull:
-                self.proc = subprocess.Popen(
-                    [str(self.binary), str(self.config)],
-                    cwd=str(self.folder),
-                    stdout=devnull,
-                    stderr=devnull
-                )
-        except Exception as e:
-            messagebox.showerror("MediaMTX", f"Failed to start:\n{e}")
-
-    def stop(self):
-        if self.proc and self.proc.poll() is None:
-            try:
-                self.proc.terminate()
-                deadline = time.time() + 2.5
-                while time.time() < deadline and self.proc.poll() is None:
-                    time.sleep(0.1)
-                if self.proc.poll() is None:
-                    self.proc.kill()
-            except Exception as e:
-                messagebox.showerror("MediaMTX", f"Failed to stop:\n{e}")
-        self.proc = None
-
-    def process_alive(self):
-        return self.proc is not None and self.proc.poll() is None
-
-    def port_open(self, timeout=0.05):
-        if not self.process_alive():
-            return False
-        try:
-            with socket.create_connection((self.host, self.port), timeout=timeout):
-                return True
-        except OSError:
-            return False
-
-    def status(self):
-        if self.process_alive():
-            return "running" if self.port_open() else "starting"
-        return "stopped"
-
-
-# ===================== ROOT =====================
+# ROOT 
 
 root = tk.Tk()
-MTX = MediaMTXController()
 root.title("YourQualityCheck")
 #root.state("zoomed")
+root.bind("<Escape>", lambda e: root.attributes("-fullscreen", False))
 root.attributes('-fullscreen', True)
 root.configure(bg=BG)
 root.resizable(False, False)
@@ -164,7 +117,32 @@ _IMG_REFS = []
 def keep_image_ref(img):
     _IMG_REFS.append(img)
 
-# ===================== HELPERS =====================
+# HELPERS 
+
+def rtsp_describe_ok(host: str, port: int, path: str = "cam1", timeout: float = 0.5) -> bool:
+    """
+    Lightweight check: send RTSP DESCRIBE to the specific path.
+    Returns True only if the stream/path is actually published (HTTP 200).
+    """
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            req = (
+                f"DESCRIBE rtsp://{host}:{port}/{path} RTSP/1.0\r\n"
+                "CSeq: 1\r\n"
+                "User-Agent: YQC/1.0\r\n"
+                "Accept: application/sdp\r\n\r\n"
+            ).encode("ascii")
+            s.sendall(req)
+            data = s.recv(1024)
+            # first line like: b"RTSP/1.0 200 OK\r\n..."
+            return b" 200 " in data[:64]
+    except OSError:
+        return False
+
+def check_status_rtsp_stream(host: str, port: int, path: str = "cam1") -> str:
+    return "running" if rtsp_describe_ok(host, port, path) else "stopped"
+
+
 
 def run_script(path: Path, extra_args=None, extra_env=None):
     """Launch a Python script in a separate process."""
@@ -186,9 +164,41 @@ def run_script(path: Path, extra_args=None, extra_env=None):
 
 def open_live_feed():
     try:
-        open_stream_popup(root, STREAM_URL_HTTP, title="Camera Feed")
+        open_stream_popup(root, STREAM_URL_RTSP, title="Camera Feed")
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open live feed URL:\n{e}")
+
+def on_snapshot_clicked(current_status, _snapshot_busy):
+    if _snapshot_busy:
+        return
+    if current_status["value"] != "running":
+        print("[SNAPSHOT] Skipped: stream inactive")
+        return
+
+    _snapshot_busy = True
+
+    def worker():
+        try:
+            cap = cv2.VideoCapture(STREAM_URL_RTSP)  # RTSP URL
+            ok, frame = cap.read()
+            cap.release()
+            if not ok or frame is None:
+                raise RuntimeError("Failed to grab frame")
+
+            os.makedirs("snapshots", exist_ok=True)
+            filename = f"snapshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+            path = os.path.join("snapshots", filename)
+            cv2.imwrite(path, frame)
+            print(f"[SNAPSHOT] Saved to {path}")
+            # notify on UI thread
+            root.after(0, lambda: messagebox.showinfo("Snapshot Captured", f"Image saved to:\n{path}"))
+        except Exception as e:
+            print(f"[SNAPSHOT] Error: {e}")
+            root.after(0, lambda: messagebox.showerror("Capture Error", f"{e}"))
+        finally:
+            _snapshot_busy = False
+
+    threading.Thread(target=worker, daemon=True).start()
 
 def hex_shift(hex_color: str, pct: float) -> str:
     """Lighten/darken a hex color by pct (-0.4..+0.4)."""
@@ -202,77 +212,14 @@ def clear_root():
     for w in root.winfo_children():
         w.destroy()
 
-# ---------- Stream Folder remember/load ----------
-def load_stream_dir() -> Path:
-    if STREAM_DIR_FILE.exists():
-        try:
-            p = Path(STREAM_DIR_FILE.read_text(encoding="utf-8").strip())
-            if p.exists():
-                return p
-        except Exception:
-            pass
-    return DEFAULT_STREAM_DIR
-
-def save_stream_dir(p: Path):
-    try:
-        STREAM_DIR_FILE.write_text(str(p), encoding="utf-8")
-    except Exception:
-        pass
-
-STREAM_DIR = load_stream_dir()
-
-def choose_stream_folder():
-    global STREAM_DIR
-    folder = filedialog.askdirectory(title="Select MediaMTX folder (contains mediamtx and mediamtx.yml)")
-    if not folder:
-        return
-    p = Path(folder)
-    binary = p / ("mediamtx.exe" if sys.platform.startswith("win") else "mediamtx")
-    config = p / "mediamtx.yml"  # or .yaml if you changed it
-
-    missing = []
-    if not binary.exists(): missing.append(str(binary.name))
-    if not config.exists(): missing.append(str(config.name))
-    if missing:
-        messagebox.showerror("MediaMTX", "Missing files in selected folder:\n" + "\n".join(missing))
-        return
-
-    STREAM_DIR = p
-    save_stream_dir(p)
-
-    # re-point the controller
-    MTX.folder = p
-    MTX.binary = binary
-    MTX.config = config
-
-    messagebox.showinfo("MediaMTX", f"MediaMTX folder set to:\n{p}")
-
-
-# ---------- Flask Stream process mgmt ----------
-_stream_proc = None
-
-def _stream_script_path() -> Path:
-    return STREAM_DIR / STREAM_FILENAME
-
-def start_stream():
-    MTX.start()
-
-def stop_stream():
-    MTX.stop()
-
-def _shutdown():
-    try:
-        stop_stream()
-    except Exception:
-        pass
-
-atexit.register(_shutdown)
-
-# ---------- Realtime Filtering (consumes MJPEG URL) ----------
+# Realtime filtering
 def run_realtime_filtering():
-    open_filtered_popup(root, STREAM_URL_HTTP)
+    try:    
+        open_filtered_popup(root, STREAM_URL_RTSP, title="Filtered Feed")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to open filtered feed:\n{e}")
 
-# ===================== TILES (with hover) =====================
+# TILES (with hover) 
 
 def make_tile(parent, title, icon_text, bg_color, command):
     container = tk.Frame(parent, bg="white")
@@ -308,7 +255,7 @@ def make_tile(parent, title, icon_text, bg_color, command):
 
     return container
 
-# ===================== SPLASH / LOGIN =====================
+# SPLASH / LOGIN 
 
 def show_splash():
     clear_root()
@@ -405,7 +352,7 @@ def show_login():
     root.bind("<Return>", do_login)
     user_entry.focus_set()
 
-# ===================== DASHBOARD =====================
+# DASHBOARD 
 
 def show_dashboard(username):
     clear_root()
@@ -432,7 +379,7 @@ def show_dashboard(username):
     for i, (title, icon, color, cmd) in enumerate(tiles):
         make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
 
-# ===================== SECTION RENDERING =====================
+# SECTION RENDERING 
 
 def render_section(section, username):
     clear_root()
@@ -478,37 +425,31 @@ def render_section(section, username):
             make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
 
     elif section == "camera":
-        # --- Camera Control Tiles ---
+        # Camera Control Tiles
+
         # Button state references
         state = {"starting": False}
 
-        def safe_start():
-            if state["starting"] or MTX.process_alive():
-                return
-            state["starting"] = True
-            start_btn_tile.configure(bg=hex_shift(COLORS["green"], -0.1))
-            try:
-                MTX.start()
-            except Exception as e:
-                messagebox.showerror("Stream", f"Failed to start MediaMTX:\n{e}")
-            finally:
-                # Allow short cooldown
-                root.after(1500, lambda: state.update(starting=False))
+        def on_start_clicked():
+            send_command_to_pi("start_feed", pi_ip=PI_HOST)
+            nudge_monitor_fast(monitor, ms=250, for_seconds=3.0)
 
-        def safe_stop():
-            try:
-                MTX.stop()
-            except Exception as e:
-                messagebox.showerror("Stream", f"Failed to stop MediaMTX:\n{e}")
+        def on_stop_clicked():
+            send_command_to_pi("stop_feed", pi_ip=PI_HOST)
+            nudge_monitor_fast(monitor, ms=250, for_seconds=2.0)
+
+        current_status = {"value": "stopped"}
+        _snapshot_busy = False
 
         # --- Build Tiles ---
         tiles = [
-            ("Set Media Folder",  "📁", COLORS["grey"],  choose_stream_folder),
-            ("Start Stream",      "🟢", COLORS["green"], safe_start),
-            ("Stop Stream",       "🔴", COLORS["pink"],  safe_stop),
-            ("Open Live Feed",    "🌐", COLORS["peach"], open_live_feed),
-            ("Realtime Filtering","🪄", COLORS["blue"],  run_realtime_filtering),
+            ("Start Stream",      "🟢", COLORS["green"], on_start_clicked),
+            ("Stop Stream",       "🔴", COLORS["pink"], on_stop_clicked),
+            ("Open Live Feed",    "🌐", COLORS["blue"], open_live_feed),
+            ("Realtime Filtering","🪄", COLORS["peach"],  run_realtime_filtering),
+            ("Capture Snapshot", "📷", COLORS["yellow"], on_snapshot_clicked(current_status, _snapshot_busy)),
         ]
+        
 
         tile_refs = []
         for i, (title, icon, color, cmd) in enumerate(tiles):
@@ -517,65 +458,50 @@ def render_section(section, username):
             tile.grid(row=r, column=c, padx=TILE_PADX, pady=TILE_PADY)
             tile_refs.append(tile)
 
-        # Keep easy handles to Start/Stop tiles
-        start_btn_tile = tile_refs[1].winfo_children()[0]  # inner tile Frame
-        stop_btn_tile  = tile_refs[2].winfo_children()[0]
-
-        # --- Streaming Status Tile (6th Tile) ---
+        # Streaming Status Tile (6th tile)
         status_tile_frame = tk.Frame(tiles_frame, bg="white")
-        status_tile = tk.Frame(status_tile_frame, bg=COLORS["grey"],
-                               width=TILE_W, height=TILE_H,
-                               highlightthickness=1, highlightbackground="#b0b0b0",
-                               relief="flat", bd=2)
+        status_tile = tk.Frame(
+            status_tile_frame, bg=COLORS["grey"],
+            width=TILE_W, height=TILE_H,
+            highlightthickness=1, highlightbackground="#b0b0b0",
+            relief="flat", bd=2
+        )
         status_tile.pack_propagate(False)
         status_tile.pack(padx=8, pady=(0, 8))
 
-        status_label = tk.Label(status_tile, text="Streaming\nStopped",
-                                bg=COLORS["grey"], fg="black",
-                                font=("Arial", 16, "bold"),
-                                wraplength=TILE_W - 20, justify="center")
+        status_label = tk.Label(
+            status_tile, text="Streaming\nStopped",
+            bg=COLORS["grey"], fg="black",
+            font=("Arial", 18, "bold"),  # larger font inside tile
+            wraplength=TILE_W - 20, justify="center"
+        )
         status_label.pack(expand=True)
 
-        title_label = tk.Label(status_tile_frame, text="Status",
-                               font=LABEL_FONT, bg="white")
+        title_label = tk.Label(status_tile_frame, text="Status", font=LABEL_FONT, bg="white")
         title_label.pack()
 
+        # grid as 6th tile
         status_tile_frame.grid(row=1, column=2, padx=TILE_PADX, pady=TILE_PADY)
 
-        # --- Non-blocking periodic status updater ---
-        def update_status_tile():
-            import threading
+        # --- Non-blocking periodic status monitor ---
+        def paint_status(st: str):
+            current_status["value"] = st
 
-            def check():
-                st = MTX.status()
-                def paint():
-                    # Default
-                    bg, fg, text = COLORS["grey"], "black", "Streaming\nStopped"
+            if st == "running":
+                bg, fg, text = "#2aa745", "white", "Streaming\nActive"
+            elif st == "starting":
+                bg, fg, text = "#e0a800", "black", "Streaming\nStarting…"
+            else:
+                bg, fg, text = "#c33", "white", "Streaming\nStopped"
 
-                    if st == "running":
-                        bg, fg, text = "#2aa745", "white", "Streaming\nActive"
-                        # Disable Start tile, enable Stop tile
-                        start_btn_tile.configure(bg="#8fd694")
-                        stop_btn_tile.configure(bg=COLORS["pink"])
-                    elif st == "starting":
-                        bg, fg, text = "#e0a800", "black", "Streaming\nStarting…"
-                    else:  # stopped
-                        bg, fg, text = "#c33", "white", "Streaming\nStopped"
-                        # Re-enable Start tile visually
-                        start_btn_tile.configure(bg=COLORS["green"])
-                        stop_btn_tile.configure(bg=hex_shift(COLORS["pink"], -0.2))
+            status_tile.config(bg=bg)
+            status_label.config(bg=bg, fg=fg, text=text)
+            title_label.config(bg="white")
 
-                    # Apply colors and text
-                    status_tile.config(bg=bg)
-                    status_label.config(bg=bg, fg=fg, text=text)
-                    title_label.config(bg="white")
-
-                tiles_frame.after(0, paint)
-
-            threading.Thread(target=check, daemon=True).start()
-            tiles_frame.after(CHECK_INTERVAL_MS, update_status_tile)
-
-        update_status_tile()
+        # RTSP Decribe
+        check_fn = lambda: check_status_rtsp_stream(PI_HOST, RTSP_TCP_PORT, "cam1")
+        monitor = StatusMonitor(root, check_fn, paint_status, interval_ms=800)
+        content.bind("<Destroy>", lambda e: monitor.stop())
 
 
 
@@ -587,7 +513,9 @@ def render_section(section, username):
         for i, (title, icon, color, cmd) in enumerate(tiles):
             make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
 
-# ===================== START =====================
+
+
+# START 
 
 def main():
     show_splash()
