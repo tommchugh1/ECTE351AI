@@ -1,5 +1,3 @@
-
-
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import messagebox
@@ -36,7 +34,7 @@ BTN_COLOR = "#007ACC"
 ENTRY_BG = "white"
 REMEMBER_FILE = "remember_me.txt"
 
-PI_HOST = "10.27.27.10"
+PI_HOST = "10.12.10.242"
 RTSP_TCP_PORT = 8554
 CHECK_INTERVAL_MS = 800
 STREAM_URL_RTSP = f"rtsp://{PI_HOST}:{RTSP_TCP_PORT}/cam1"

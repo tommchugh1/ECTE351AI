@@ -171,12 +171,3 @@ class FilteredStreamPopup:
 # Helper function
 def open_filtered_popup(parent, url, title="Filtered Stream"):
     return FilteredStreamPopup(parent, url, title=title)
-
-
-# Standalone test
-if __name__ == "__main__":
-    root = tk.Tk()
-    root.title("Test Filtered Stream")
-    test_url = "rtsp://10.12.10.242:8554/cam1"
-    ttk.Button(root, text="Open Filtered View", command=lambda: open_filtered_popup(root, test_url)).pack(padx=12, pady=12)
-    root.mainloop()
