@@ -8,7 +8,7 @@ import numpy as np
 
 core = Core()
 devices = core.available_devices or []   # None-safe
-device = "CPU"
+device = "cpu"
 
 print(f"OpenVINO devices: {devices} — using: {device}")
 
@@ -188,7 +188,7 @@ def testProcessor(iterations, model, image_path):
 
 
 
-def run_inference_on_generator(frame_generator, on_frame=None):
+def run_inference_on_generator(frame_generator, on_frame=None, device=device):
     """
     Runs YOLOv8 inference on a generator of frames.
     Supports both:
@@ -199,7 +199,6 @@ def run_inference_on_generator(frame_generator, on_frame=None):
     # --- Model load (OpenVINO) ---
     core = Core()
     devices = core.available_devices
-    device = "cpu" #if "NPU" in devices else "GPU"
     print(f"OpenVINO devices: {devices} — using: {device}")
 
     model_path = r"C:\Next Cloud\Documents\Uni Work\2025 University Work\Semester 2\ECTE351\Project\Github Repo\ECTE351AI\AI\RUNS\train\bolt_training\weights\best.pt"
