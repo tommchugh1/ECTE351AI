@@ -2,21 +2,21 @@ from ultralytics import YOLO
 import os
 import cv2
 import time
-from openvino.runtime import Core
+from openvino import Core
+import numpy as np
+
 
 core = Core()
 devices = core.available_devices or []   # None-safe
 device = "CPU"
-if any("GPU" in d.upper() for d in devices):
-    device = "GPU"
 
 print(f"OpenVINO devices: {devices} — using: {device}")
 
 # Auto-select best available OpenVINO device
-if any("GPU" in d for d in devices):
-    device = "GPU"
-elif any("NPU" in d for d in devices):
+if any("NPU" in d for d in devices):
     device = "NPU"
+elif any("GPU" in d for d in devices):
+    device = "GPU"
 elif "CPU" in devices:
     device = "CPU"
 else:
@@ -184,34 +184,54 @@ def testProcessor(iterations, model, image_path):
 
 
 # Run benchmark
-testProcessor(1, ov_model, image_path)
-
-'''
-
-#Provide video stream address
-#cap = cv2.VideoCapture('http://0.0.0.0:5000/video_feed')
-cap = cv2.VideoCapture('http://10.12.165.126:8889/cam1/')
-
-if not cap.isOpened():
-    print('Error: Could not access video stream')
-    exit()
+#testProcessor(1, ov_model, image_path)
 
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        print('Error: Failed to grab frame')
-        break
 
-    cv2.imshow('Processed Frame', frame)
+def run_inference_on_generator(frame_generator, on_frame=None):
+    """
+    Runs YOLOv8 inference on a generator of frames.
+    Supports both:
+      - callback mode (on_frame(img, det_count))
+      - iterator mode (yield annotated frames)
+    """
 
-    results = ov_model(frame, device="intel:"+processor)
+    # --- Model load (OpenVINO) ---
+    core = Core()
+    devices = core.available_devices
+    device = "xpu" #if "NPU" in devices else "GPU"
+    print(f"OpenVINO devices: {devices} — using: {device}")
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+    model_path = r"C:\Next Cloud\Documents\Uni Work\2025 University Work\Semester 2\ECTE351\Project\Github Repo\ECTE351AI\AI\RUNS\train\bolt_training\weights\best.pt"
+    model = YOLO(model_path)
+    model.to(device)
+    print("YOLOv8 model loaded successfully.")
 
+    # --- Main loop ---
+    fps_t0 = time.time()
+    fps_n = 0
+    for frame in frame_generator:
+        if frame is None or not isinstance(frame, np.ndarray):
+            continue
 
-cap.release()
-cv2.destroyAllWindows()
+        # Run inference
+        results = model.predict(frame, verbose=False)
+        det_count = len(results[0].boxes)
 
-'''
+        # Draw bounding boxes
+        annotated = results[0].plot()
+
+        fps_n += 1
+        if time.time() - fps_t0 >= 1.0:
+            print(f"FPS: {fps_n}")
+            fps_n = 0
+            fps_t0 = time.time()
+
+        if on_frame:
+            # Push frame to GUI
+            on_frame(annotated, det_count)
+        else:
+            # Yield frame for console-only testing
+            yield annotated
+
+    print("Inference stopped gracefully.")

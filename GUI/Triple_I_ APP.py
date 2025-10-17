@@ -8,14 +8,17 @@ import sys
 from pathlib import Path
 import socket
 import threading
+import numpy as np
 import cv2
-from datetime import datetime
+import time
 from openFeed import open_stream_popup
 from Realtime_Filtering import open_filtered_popup
 from statusUpdater import (
     StatusMonitor,
     nudge_monitor_fast
 )
+
+
 # USER DATA 
 
 USERS = {
@@ -41,6 +44,10 @@ STREAM_URL_RTSP = f"rtsp://{PI_HOST}:{RTSP_TCP_PORT}/cam1"
 
 # Relative script paths
 working_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+sys.path.insert(1, working_dir)
+from Realtime_Filtering import get_filtered_frames
+from AI.execute import run_inference_on_generator
 
 SCRIPT_PATHS = {
     "execute":   Path(os.path.join(working_dir, "AI", "execute.py")),
@@ -164,37 +171,6 @@ def open_live_feed():
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open live feed URL:\n{e}")
 
-def on_snapshot_clicked(current_status, _snapshot_busy):
-    if _snapshot_busy:
-        return
-    if current_status["value"] != "running":
-        print("[SNAPSHOT] Skipped: stream inactive")
-        return
-
-    _snapshot_busy = True
-
-    def worker():
-        try:
-            cap = cv2.VideoCapture(STREAM_URL_RTSP)  # RTSP URL
-            ok, frame = cap.read()
-            cap.release()
-            if not ok or frame is None:
-                raise RuntimeError("Failed to grab frame")
-
-            os.makedirs("snapshots", exist_ok=True)
-            filename = f"snapshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-            path = os.path.join("snapshots", filename)
-            cv2.imwrite(path, frame)
-            print(f"[SNAPSHOT] Saved to {path}")
-            # notify on UI thread
-            root.after(0, lambda: messagebox.showinfo("Snapshot Captured", f"Image saved to:\n{path}"))
-        except Exception as e:
-            print(f"[SNAPSHOT] Error: {e}")
-            root.after(0, lambda: messagebox.showerror("Capture Error", f"{e}"))
-        finally:
-            _snapshot_busy = False
-
-    threading.Thread(target=worker, daemon=True).start()
 
 def hex_shift(hex_color: str, pct: float) -> str:
     """Lighten/darken a hex color by pct (-0.4..+0.4)."""
@@ -435,7 +411,6 @@ def render_section(section, username):
             nudge_monitor_fast(monitor, ms=250, for_seconds=2.0)
 
         current_status = {"value": "stopped"}
-        _snapshot_busy = False
 
         # --- Build Tiles ---
         tiles = [
@@ -443,7 +418,7 @@ def render_section(section, username):
             ("Stop Stream",       "🔴", COLORS["pink"], on_stop_clicked),
             ("Open Live Feed",    "🌐", COLORS["blue"], open_live_feed),
             ("Realtime Filtering","🪄", COLORS["peach"],  run_realtime_filtering),
-            ("Capture Snapshot", "📷", COLORS["yellow"], on_snapshot_clicked(current_status, _snapshot_busy)),
+            ("Run Inference", "🧠", COLORS["yellow"], lambda: render_inference_page(username)),
         ]
         
 
@@ -508,6 +483,234 @@ def render_section(section, username):
         ]
         for i, (title, icon, color, cmd) in enumerate(tiles):
             make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
+
+def render_inference_page(username):
+    """
+    Full-page inference that:
+      - consumes filtered frames from get_filtered_frames(...)
+      - passes them to run_inference_on_generator
+      - displays annotated frames in a Tk label
+    """
+
+    clear_root()
+
+    # -------- Sidebar --------
+    sidebar = tk.Frame(root, bg="#bdbdbd", width=200)
+    sidebar.pack(side="left", fill="y"); sidebar.pack_propagate(False)
+
+    def sbtn(text, cmd, active=False):
+        tk.Button(sidebar, text=text,
+                  font=("Arial", 14, "bold" if active else "normal"),
+                  bg="#eeeeee" if active else "#bdbdbd", relief="flat",
+                  anchor="w", padx=14, pady=12, command=cmd).pack(fill="x", pady=2)
+
+    sbtn("← Back to Camera", lambda: render_section("camera", username))
+    sbtn("👤 Profile",   lambda: render_section("profile", username))
+    sbtn("📦 Inventory", lambda: render_section("inventory", username))
+    sbtn("🖼 Gallery",   lambda: render_section("gallery", username))
+
+    # -------- Content --------
+    content = tk.Frame(root, bg="white")
+    content.pack(side="right", expand=True, fill="both")
+
+    tk.Label(content, text="🧠 Inference (Filtered → Model)", font=SECTION_FONT, bg="white").pack(pady=(18, 6))
+    tk.Label(content, text=f"Source: {STREAM_URL_RTSP}", font=("Arial", 11), bg="white", fg="#555").pack(pady=(0, 8))
+
+    # Status bar
+    status_bar = tk.Frame(content, bg="#f6f7f9", bd=1, relief="solid", height=56)
+    status_bar.pack(fill="x", padx=18, pady=(0, 10))
+    status_bar.pack_propagate(False)
+
+    stats_inner = tk.Frame(status_bar, bg=status_bar["bg"]); stats_inner.pack(fill="both", expand=True, padx=10)
+    for i in range(4):
+        stats_inner.grid_columnconfigure(i, weight=1, uniform="stats")
+
+    sv_state = tk.StringVar(value="Idle")
+    sv_fps   = tk.StringVar(value="—")
+    sv_det   = tk.StringVar(value="—")
+    sv_err   = tk.StringVar(value="")
+
+    def add_stat(col, label_text, var):
+        tk.Label(stats_inner, text=label_text, bg=status_bar["bg"], fg="#333",
+                 font=("Arial", 10, "bold")).grid(row=0, column=col, padx=6, pady=(6, 0), sticky="w")
+        tk.Label(stats_inner, textvariable=var, bg=status_bar["bg"], fg="#111",
+                 font=("Arial", 11)).grid(row=1, column=col, padx=6, pady=(0, 6), sticky="w")
+
+    add_stat(0, "State", sv_state)
+    add_stat(1, "FPS",   sv_fps)
+    add_stat(2, "Detections", sv_det)
+    add_stat(3, "Last Error", sv_err)
+
+    def set_bar(level="info"):
+        color = {"ok":"#e8f5e9", "warn":"#fff8e1", "err":"#ffebee", "info":"#f6f7f9"}.get(level, "#f6f7f9")
+        status_bar.configure(bg=color)
+        stats_inner.configure(bg=color)
+        for w in stats_inner.winfo_children():
+            w.configure(bg=color)
+
+    # Controls
+    controls = tk.Frame(content, bg="white")
+    controls.pack(side="bottom", pady=(0, 18), padx=18, fill="x")
+
+
+    # ------- Threads & state -------
+    stop_event = threading.Event()
+    running = {"v": False}
+    frame_lock = threading.Lock()
+    latest_frame = {"img": None}  # RGB annotated frame
+
+    # FPS counters
+    t0 = [time.time()]
+    n  = [0]
+
+    def push_frame_to_ui(annotated_bgr: np.ndarray, det_count: int | None = None):
+        """Called by inference when a new annotated frame is ready."""
+        try:
+            rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
+        except Exception:
+            rgb = annotated_bgr  # in case already RGB
+
+        with frame_lock:
+            latest_frame["img"] = rgb
+
+        # fps
+        n[0] += 1
+        now = time.time()
+        if now - t0[0] >= 1.0:
+            sv_fps.set(str(n[0]))
+            n[0] = 0
+            t0[0] = now
+
+        if det_count is not None:
+            sv_det.set(str(det_count))
+
+    def ui_refresh():
+        if not video_lbl.winfo_exists():
+            return
+        img = None
+        with frame_lock:
+            img = latest_frame["img"]
+        if img is not None:
+            # fit to label
+            h, w = img.shape[:2]
+            win_w = max(1, video_lbl.winfo_width())
+            win_h = max(1, video_lbl.winfo_height())
+            scale = min(win_w / w, win_h / h)
+            new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
+            vis = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
+            try:
+                pil = Image.fromarray(vis)
+                imgtk = ImageTk.PhotoImage(image=pil)
+                video_lbl.imgtk = imgtk
+                video_lbl.configure(image=imgtk)
+            except Exception:
+                pass
+        video_lbl.after(33, ui_refresh)  # ~30 fps
+
+    def filtered_generator():
+        print("[DEBUG] Starting filtered_generator()")
+        gen = get_filtered_frames(
+            STREAM_URL_RTSP,
+            enable_chroma_key=True,
+            enable_grayscale=True,
+            enable_binarization=True,
+            enable_rotation=False,
+            enable_zoom=False,
+            threshold_val=200,
+            stop_event=stop_event,
+        )
+        for f in gen:
+            if stop_event.is_set():
+                break
+            print("[DEBUG] Yielding filtered frame")
+            yield f
+
+    def inference_worker():
+        print("[DEBUG] Inference thread started")
+        sv_state.set("Connecting…"); set_bar("info")
+        safe_device = "xpu"
+        try:
+            result = run_inference_on_generator(
+                frame_generator=filtered_generator(),
+                on_frame=lambda img, det_count=None: push_frame_to_ui(img, det_count),
+                device=safe_device,
+            )
+        except TypeError:
+            # older signature: try without 'device'
+            result = run_inference_on_generator(
+                filtered_generator(),
+                on_frame=lambda img, det_count=None: push_frame_to_ui(img, det_count),
+            )
+            print("[DEBUG] run_inference_on_generator returned:", type(result))
+            if result is not None:
+                for annotated in result:
+                    if stop_event.is_set():
+                        break
+                    if isinstance(annotated, tuple):
+                        img, dets = annotated[0], annotated[1] if len(annotated) > 1 else None
+                        push_frame_to_ui(img, dets)
+                    else:
+                        push_frame_to_ui(annotated, None)
+            sv_state.set("Stopped"); set_bar("info")
+        except Exception as e:
+            sv_state.set("Error")
+            sv_err.set(str(e))
+            set_bar("err")
+        finally:
+            running["v"] = False
+            start_btn.config(state="normal")
+            stop_btn.config(state="disabled")
+
+    def start_inference():
+        print("[DEBUG] Start button pressed", flush=True)
+        if running["v"]:
+            return
+        sv_err.set("")
+        stop_event.clear()
+        running["v"] = True
+        sv_state.set("Running"); set_bar("ok")
+        start_btn.config(state="disabled")
+        stop_btn.config(state="normal")
+        threading.Thread(target=inference_worker, daemon=True).start()
+
+    def stop_inference():
+        print("[DEBUG] Stop button pressed", flush=True)
+        if not running["v"]:
+            return
+        sv_state.set("Stopping…"); set_bar("warn")
+        stop_event.set()
+
+    start_btn = tk.Button(
+        controls, text="Start Inference",
+        font=BTN_FONT, bg=COLORS["green"], fg="black",
+        command=start_inference
+    )
+    stop_btn = tk.Button(
+        controls, text="Stop Inference",
+        font=BTN_FONT, bg=COLORS["pink"], fg="black",
+        command=stop_inference
+    )
+    back_btn = tk.Button(
+        controls, text="Back",
+        font=BTN_FONT, bg=COLORS["grey"], fg="black",
+        command=lambda: render_section("camera", username)
+    )
+
+    # align them to the right edge
+    back_btn.pack(side="right", padx=6)
+    stop_btn.pack(side="right", padx=6)
+    start_btn.pack(side="right", padx=6)
+
+    video_holder = tk.Frame(content, bg="#111", width=960, height=720)
+    video_holder.pack(side="top", padx=18, pady=(0, 10), fill="both", expand=True)
+    video_holder.pack_propagate(False)
+
+    video_lbl = tk.Label(video_holder, bg="black")
+    video_lbl.pack(fill="both", expand=True)
+
+
+    ui_refresh()
+
 
 
 

@@ -6,6 +6,66 @@ import numpy as np
 import threading
 import time
 
+def get_filtered_frames(
+    url,
+    enable_chroma_key=True,
+    enable_grayscale=True,
+    enable_binarization=True,
+    enable_rotation=False,
+    enable_zoom=False,
+    threshold_val=200,
+    stop_event=None
+):
+    cap = cv2.VideoCapture(url)
+    if not cap.isOpened():
+        print("[ERROR] Cannot open stream for filtering")
+        return
+
+    while stop_event is None or not stop_event.is_set():
+        ok, frame = cap.read()
+        if not ok:
+            time.sleep(0.03)
+            continue
+
+        # Apply the same filters inline:
+        try:
+            if enable_chroma_key:
+                hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                green_mask = cv2.inRange(hsv, (35, 100, 100), (85, 255, 255))
+                inv_mask = cv2.bitwise_not(green_mask)
+                frame = cv2.bitwise_and(frame, frame, mask=inv_mask)
+
+            if enable_grayscale:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            if enable_binarization:
+                if len(frame.shape) == 3:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                _, frame = cv2.threshold(frame, threshold_val, 255, cv2.THRESH_BINARY)
+
+            if enable_rotation:
+                h, w = frame.shape[:2]
+                M = cv2.getRotationMatrix2D((w // 2, h // 2), 0, 1.0)
+                frame = cv2.warpAffine(frame, M, (w, h))
+
+            if enable_zoom:
+                frame = cv2.resize(frame, None, fx=1.2, fy=1.2)
+
+            if len(frame.shape) == 2:
+                frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+            else:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        except Exception as e:
+            print(f"[ERROR] Filter failed: {e}")
+            continue
+
+        yield frame
+
+    cap.release()
+
+
+
 class FilteredStreamPopup:
     def __init__(self, parent, url, title="Filtered Stream"):
         self.parent = parent
@@ -167,7 +227,11 @@ class FilteredStreamPopup:
         self.running = False
         self.win.after(100, self.win.destroy)
 
+    
+
 
 # Helper function
 def open_filtered_popup(parent, url, title="Filtered Stream"):
     return FilteredStreamPopup(parent, url, title=title)
+
+
