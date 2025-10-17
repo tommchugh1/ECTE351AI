@@ -628,7 +628,7 @@ def render_inference_page(username):
     def inference_worker():
         print("[DEBUG] Inference thread started")
         sv_state.set("Connecting…"); set_bar("info")
-        safe_device = "xpu"
+        safe_device = "cpu"
         try:
             result = run_inference_on_generator(
                 frame_generator=filtered_generator(),
