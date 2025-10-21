@@ -37,7 +37,7 @@ BTN_COLOR = "#007ACC"
 ENTRY_BG = "white"
 REMEMBER_FILE = "remember_me.txt"
 
-PI_HOST = "10.12.10.242"
+PI_HOST = "10.12.132.203"
 RTSP_TCP_PORT = 8554
 CHECK_INTERVAL_MS = 800
 STREAM_URL_RTSP = f"rtsp://{PI_HOST}:{RTSP_TCP_PORT}/cam1"
@@ -611,9 +611,9 @@ def render_inference_page(username):
         print("[DEBUG] Starting filtered_generator()")
         gen = get_filtered_frames(
             STREAM_URL_RTSP,
-            enable_chroma_key=True,
-            enable_grayscale=True,
-            enable_binarization=True,
+            enable_chroma_key=False,
+            enable_grayscale=False,
+            enable_binarization=False,
             enable_rotation=False,
             enable_zoom=False,
             threshold_val=200,
@@ -628,12 +628,10 @@ def render_inference_page(username):
     def inference_worker():
         print("[DEBUG] Inference thread started")
         sv_state.set("Connecting…"); set_bar("info")
-        safe_device = "cpu"
         try:
             result = run_inference_on_generator(
                 frame_generator=filtered_generator(),
                 on_frame=lambda img, det_count=None: push_frame_to_ui(img, det_count),
-                device=safe_device,
             )
         except TypeError:
             # older signature: try without 'device'

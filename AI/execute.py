@@ -11,7 +11,7 @@ devices = core.available_devices or []   # None-safe
 device = "CPU"
 
 print(f"OpenVINO devices: {devices} — using: {device}")
-
+'''
 # Auto-select best available OpenVINO device
 if any("NPU" in d for d in devices):
     device = "NPU"
@@ -22,7 +22,7 @@ elif "CPU" in devices:
 else:
     print("No compatible OpenVINO devices found.")
     exit(1)
-
+'''
 os.environ["OPENVINO_DEFAULT_DEVICE"] = device
 print(f"Selected OpenVINO device: {device}")
 
@@ -201,8 +201,8 @@ def run_inference_on_generator(frame_generator, on_frame=None):
     devices = core.available_devices
     device = "cpu" #if "NPU" in devices else "GPU"
     print(f"OpenVINO devices: {devices} — using: {device}")
-
-    model_path = model_path
+    model_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "RUNS", "train", "bolt_training", "weights", "best.pt")
+    print(model_path)
     model = YOLO(model_path)
     model.to(device)
     print("YOLOv8 model loaded successfully.")
