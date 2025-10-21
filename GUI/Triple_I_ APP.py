@@ -46,7 +46,6 @@ STREAM_URL_RTSP = f"rtsp://{PI_HOST}:{RTSP_TCP_PORT}/cam1"
 working_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 sys.path.insert(1, working_dir)
-from Realtime_Filtering import get_filtered_frames
 
 SCRIPT_PATHS = {
     "execute":   Path(os.path.join(working_dir, "AI", "execute.py")),
@@ -85,20 +84,40 @@ COLORS = {
 logo_path = os.path.join(working_dir, "GUI", "logo_final.jpg")
 
 # Sends command to Pi to start feed.
-def send_command_to_pi(command: str, pi_ip: str = PI_HOST, port: int = 9001) -> str:
-    
-    # Sends 'start_feed' or 'stop_feed' to the socket server on the Pi.
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(1.5)
-            s.connect((pi_ip, port))
-            s.sendall(command.encode("utf-8"))
-            response = s.recv(1024).decode("utf-8", errors="ignore")
-            print(f"[Pi Response] {response}")
-            return response
-    except Exception as e:
-        print(f"[ERROR] Failed to send command to {pi_ip}:{port} -> {e}")
-        return "ERROR"
+def send_command_to_pi(command: str, pi_ip: str = PI_HOST, port: int = 9001, timeout: float = 3.0) -> str:
+    """
+    Send a command to the Pi control socket, return the response (or a readable error).
+    Tries 'start_feed'→'start' and 'stop_feed'→'stop'. Appends a newline.
+    """
+    variants = [command]
+    if command == "start_feed": variants.append("start")
+    if command == "stop_feed":  variants.append("stop")
+
+    last_err = None
+    for cmd in variants:
+        for nl in ("\n", "\r\n"):  # try both line endings
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(timeout)
+                    s.connect((pi_ip, port))
+                    s.sendall((cmd + nl).encode("utf-8"))
+                    chunks = []
+                    s.settimeout(1.5)
+                    while True:
+                        try:
+                            data = s.recv(1024)
+                            if not data:
+                                break
+                            chunks.append(data)
+                        except socket.timeout:
+                            break
+                    resp = b"".join(chunks).decode("utf-8", errors="ignore").strip()
+                    return resp if resp else f"OK (no payload) for '{cmd}'"
+            except Exception as e:
+                last_err = str(e)
+                continue
+    return f"ERROR sending '{command}' to {pi_ip}:{port} — {last_err or 'unknown error'}"
+
 
 # ROOT 
 
@@ -143,7 +162,6 @@ def rtsp_describe_ok(host: str, port: int, path: str = "cam1", timeout: float = 
 
 def check_status_rtsp_stream(host: str, port: int, path: str = "cam1") -> str:
     return "running" if rtsp_describe_ok(host, port, path) else "stopped"
-
 
 
 def run_script(path: Path, extra_args=None, extra_env=None):
@@ -324,13 +342,16 @@ def show_login():
     user_entry.focus_set()
 
 # DASHBOARD 
-
 def show_dashboard(username):
     clear_root()
+
     main = tk.Frame(root, bg="white")
     main.pack(fill="both", expand=True)
 
-    tk.Label(main, text="Welcome to YourQualityCheck", font=TITLE_FONT, bg="white").pack(pady=(18, 6))
+    # Header
+    tk.Label(main, text="Welcome to YourQualityCheck", font=TITLE_FONT, bg="white")\
+        .pack(pady=(18, 6))
+
     try:
         img = Image.open(logo_path).resize((220, 220), Image.Resampling.LANCZOS)
         logo = ImageTk.PhotoImage(img); keep_image_ref(logo)
@@ -338,17 +359,85 @@ def show_dashboard(username):
     except Exception:
         tk.Label(main, text="QuAck", font=("Arial", 22, "bold"), bg="white").pack(pady=(2, 26))
 
-    tiles_frame = tk.Frame(main, bg="white"); tiles_frame.pack()
+    # -------- Content area with fixed-height tile belt --------
+    content = tk.Frame(main, bg="white")
+    content.pack(fill="both", expand=True, padx=24, pady=16)
+    # row 0: tile belt (fixed height), row 1: spacer absorbs extra height
+    content.grid_rowconfigure(0, weight=0)
+    content.grid_rowconfigure(1, weight=1)
+    content.grid_columnconfigure(0, weight=1)
 
+    # Fixed belt height: tile height + label space
+    belt_height = TILE_H + 58  # tweak this label margin as you like
+    belt = tk.Frame(content, bg="white", height=belt_height)
+    belt.grid(row=0, column=0, sticky="ew")
+    belt.grid_propagate(False)
+
+    # 5 equal columns; each tile lives in its own column, evenly spaced
+    for c in range(5):
+        belt.grid_columnconfigure(c, weight=1, uniform="belt_cols")
+    belt.grid_rowconfigure(0, weight=1)
+
+    # ---- Local fixed-height, width-responsive tile (keeps height constant) ----
+    def make_fixedheight_tile(parent, title, icon_text, bg_color, command):
+        container = tk.Frame(parent, bg="white")
+
+        # Colored tile (fixed height, width adapts to cell)
+        tile = tk.Frame(container, bg=bg_color, highlightthickness=1,
+                        highlightbackground="#b0b0b0", relief="flat", bd=2,
+                        height=TILE_H)
+        tile.pack_propagate(False)
+        # Fill horizontally; keep a small vertical margin above the title
+        tile.pack(fill="x", expand=True, padx=6, pady=(0, 6))
+
+        icon_lbl = tk.Label(tile, text=icon_text, bg=bg_color, fg="black", font=_icon_normal)
+        icon_lbl.pack(expand=True, fill="both")
+
+        title_lbl = tk.Label(container, text=title, font=LABEL_FONT, bg="white")
+        title_lbl.pack()
+
+        hover_bg = hex_shift(bg_color, -0.06)
+        def on_enter(_):
+            tile.configure(bg=hover_bg, relief="raised")
+            icon_lbl.configure(bg=hover_bg, font=_icon_bold)
+        def on_leave(_):
+            tile.configure(bg=bg_color, relief="flat")
+            icon_lbl.configure(bg=bg_color, font=_icon_normal)
+        def on_click(_):
+            command()
+
+        for w in (tile, icon_lbl):
+            w.bind("<Enter>", on_enter)
+            w.bind("<Leave>", on_leave)
+            w.bind("<Button-1>", on_click)
+
+        # Keep height fixed, width follows available cell width
+        def _resize_width_only(event):
+            # event.width is the container (cell) width
+            # leave a small inner margin
+            target_w = max(120, int(event.width * 0.92))
+            tile.config(width=target_w, height=TILE_H)
+
+        container.bind("<Configure>", _resize_width_only)
+        return container
+
+    # Define tiles (actions unchanged)
     tiles = [
-        ("Profile",       "👤", COLORS["grey"],  lambda: render_section("profile", username)),
+        ("Profile",       "👤", COLORS["grey"],  lambda: render_section("profile",   username)),
         ("Inventory",     "📦", COLORS["blue"],  lambda: render_section("inventory", username)),
-        ("Camera Feed",   "📷", COLORS["peach"], lambda: render_section("camera", username)),
-        ("Photo Gallery", "🖼", COLORS["green"], lambda: render_section("gallery", username)),
+        ("Camera Feed",   "📷", COLORS["peach"], lambda: render_section("camera",    username)),
+        ("Photo Gallery", "🖼", COLORS["green"], lambda: render_section("gallery",   username)),
         ("Logout",        "📱", COLORS["pink"],  show_login),
     ]
-    for i, (title, icon, color, cmd) in enumerate(tiles):
-        make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
+
+    # Place all five across a single top row; columns auto-size evenly
+    for col, (title, icon, color, cmd) in enumerate(tiles):
+        make_fixedheight_tile(belt, title, icon, color, cmd)\
+            .grid(row=0, column=col, padx=TILE_PADX, pady=TILE_PADY, sticky="nsew")
+
+    # Flexible spacer below so extra vertical space stays under the belt
+    tk.Frame(content, bg="white").grid(row=1, column=0, sticky="nsew")
+
 
 # SECTION RENDERING 
 
@@ -396,30 +485,25 @@ def render_section(section, username):
             make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
 
     elif section == "camera":
-        # Camera Control Tiles
-
-        # Button state references
-        state = {"starting": False}
-
+        # --- Handlers that actually send the command and speed up polling ---
         def on_start_clicked():
-            send_command_to_pi("start_feed", pi_ip=PI_HOST)
+            resp = send_command_to_pi("start_feed", pi_ip=PI_HOST, port=9001)
+            print("[CTRL] start_feed:", resp)
             nudge_monitor_fast(monitor, ms=250, for_seconds=3.0)
 
         def on_stop_clicked():
-            send_command_to_pi("stop_feed", pi_ip=PI_HOST)
+            resp = send_command_to_pi("stop_feed", pi_ip=PI_HOST, port=9001)
+            print("[CTRL] stop_feed:", resp)
             nudge_monitor_fast(monitor, ms=250, for_seconds=2.0)
 
-        current_status = {"value": "stopped"}
-
-        # --- Build Tiles ---
+        # --- Build Tiles (CALL the functions directly) ---
         tiles = [
-            ("Start Stream",      "🟢", COLORS["green"], lambda: on_start_clicked),
-            ("Stop Stream",       "🔴", COLORS["pink"], lambda: on_stop_clicked),
-            ("Open Live Feed",    "🌐", COLORS["blue"], lambda: open_live_feed),
-            ("Realtime Filtering","🪄", COLORS["peach"],  lambda: run_realtime_filtering),
-            ("Run Inference", "🧠", COLORS["yellow"], lambda: render_inference_page(username)),
+            ("Start Stream",      "🟢", COLORS["green"], on_start_clicked),
+            ("Stop Stream",       "🔴", COLORS["pink"],  on_stop_clicked),
+            ("Open Live Feed",    "🌐", COLORS["blue"],  open_live_feed),
+            ("Realtime Filtering","🪄", COLORS["peach"], run_realtime_filtering),
+            ("Run Inference",     "🧠", COLORS["yellow"], lambda: render_inference_page(username)),
         ]
-        
 
         tile_refs = []
         for i, (title, icon, color, cmd) in enumerate(tiles):
@@ -428,7 +512,7 @@ def render_section(section, username):
             tile.grid(row=r, column=c, padx=TILE_PADX, pady=TILE_PADY)
             tile_refs.append(tile)
 
-        # Streaming Status Tile (6th tile)
+        # --- Status tile + monitor (unchanged) ---
         status_tile_frame = tk.Frame(tiles_frame, bg="white")
         status_tile = tk.Frame(
             status_tile_frame, bg=COLORS["grey"],
@@ -442,33 +526,26 @@ def render_section(section, username):
         status_label = tk.Label(
             status_tile, text="Streaming\nStopped",
             bg=COLORS["grey"], fg="black",
-            font=("Arial", 18, "bold"),  # larger font inside tile
+            font=("Arial", 18, "bold"),
             wraplength=TILE_W - 20, justify="center"
         )
         status_label.pack(expand=True)
 
         title_label = tk.Label(status_tile_frame, text="Status", font=LABEL_FONT, bg="white")
         title_label.pack()
-
-        # grid as 6th tile
         status_tile_frame.grid(row=1, column=2, padx=TILE_PADX, pady=TILE_PADY)
 
-        # --- Non-blocking periodic status monitor ---
         def paint_status(st: str):
-            current_status["value"] = st
-
             if st == "running":
                 bg, fg, text = "#2aa745", "white", "Streaming\nActive"
             elif st == "starting":
                 bg, fg, text = "#e0a800", "black", "Streaming\nStarting…"
             else:
                 bg, fg, text = "#c33", "white", "Streaming\nStopped"
-
             status_tile.config(bg=bg)
             status_label.config(bg=bg, fg=fg, text=text)
             title_label.config(bg="white")
 
-        # RTSP Decribe
         check_fn = lambda: check_status_rtsp_stream(PI_HOST, RTSP_TCP_PORT, "cam1")
         monitor = StatusMonitor(root, check_fn, paint_status, interval_ms=800)
         content.bind("<Destroy>", lambda e: monitor.stop())
@@ -483,54 +560,65 @@ def render_section(section, username):
         for i, (title, icon, color, cmd) in enumerate(tiles):
             make_tile(tiles_frame, title, icon, color, cmd).grid(row=0, column=i, padx=TILE_PADX, pady=TILE_PADY)
 
+            
 def render_inference_page(username):
     """
-    Inference page that reads frames directly from an HTTP (or RTSP) stream
-    and pushes annotated frames to the UI.
-    - Uses a simple OpenCV VideoCapture-based generator.
-    - No Realtime_Filtering / get_filtered_frames dependency.
+    Inference page (no Pi start/stop):
+      • Read-only stream status via StatusMonitor (DESCRIBE on /cam1)
+      • Start/Stop Inference controls (always visible at bottom)
+      • Frames pulled directly from HTTP/RTSP using OpenCV
     """
-
     clear_root()
 
     # -------- Sidebar --------
     sidebar = tk.Frame(root, bg="#bdbdbd", width=200)
-    sidebar.pack(side="left", fill="y"); sidebar.pack_propagate(False)
+    sidebar.pack(side="left", fill="y")
+    sidebar.pack_propagate(False)
 
     def sbtn(text, cmd, active=False):
-        tk.Button(sidebar, text=text,
-                  font=("Arial", 14, "bold" if active else "normal"),
-                  bg="#eeeeee" if active else "#bdbdbd", relief="flat",
-                  anchor="w", padx=14, pady=12, command=cmd).pack(fill="x", pady=2)
+        tk.Button(
+            sidebar, text=text,
+            font=("Arial", 14, "bold" if active else "normal"),
+            bg="#eeeeee" if active else "#bdbdbd",
+            relief="flat", anchor="w", padx=14, pady=12, command=cmd
+        ).pack(fill="x", pady=2)
 
     sbtn("← Back to Camera", lambda: render_section("camera", username))
     sbtn("👤 Profile",   lambda: render_section("profile", username))
     sbtn("📦 Inventory", lambda: render_section("inventory", username))
     sbtn("🖼 Gallery",   lambda: render_section("gallery", username))
 
-    # -------- Content --------
+    # -------- Content (GRID LAYOUT) --------
     content = tk.Frame(root, bg="white")
     content.pack(side="right", expand=True, fill="both")
 
-    # Choose stream URL: prefer HTTP if you defined STREAM_URL_HTTP; else fall back to RTSP
+    # 2 rows: row 0 = video area, row 1 = controls bar
+    content.grid_rowconfigure(0, weight=1)
+    content.grid_rowconfigure(1, weight=0)
+    content.grid_columnconfigure(0, weight=1)
+
+    # Header
     stream_url = globals().get("STREAM_URL_HTTP", STREAM_URL_RTSP)
+    header = tk.Frame(content, bg="white")
+    header.grid(row=0, column=0, sticky="nw", padx=18, pady=(14, 0))
+    tk.Label(header, text="🧠 Inference (Live Stream → Model)", font=SECTION_FONT, bg="white").pack(anchor="w")
 
-    tk.Label(content, text="🧠 Inference (Live Stream → Model)", font=SECTION_FONT, bg="white").pack(pady=(18, 6))
-    tk.Label(content, text=f"Source: {stream_url}", font=("Arial", 11), bg="white", fg="#555").pack(pady=(0, 8))
 
-    # Status bar (State / FPS / Detections / Last Error)
+    # Status bar
     status_bar = tk.Frame(content, bg="#f6f7f9", bd=1, relief="solid", height=56)
-    status_bar.pack(fill="x", padx=18, pady=(0, 10))
-    status_bar.pack_propagate(False)
+    status_bar.grid(row=0, column=0, sticky="new", padx=18, pady=(6, 8))
+    status_bar.grid_propagate(False)
 
-    stats_inner = tk.Frame(status_bar, bg=status_bar["bg"]); stats_inner.pack(fill="both", expand=True, padx=10)
-    for i in range(4):
+    stats_inner = tk.Frame(status_bar, bg=status_bar["bg"])
+    stats_inner.pack(fill="both", expand=True, padx=10)
+    for i in range(5):
         stats_inner.grid_columnconfigure(i, weight=1, uniform="stats")
 
-    sv_state = tk.StringVar(value="Idle")
-    sv_fps   = tk.StringVar(value="—")
-    sv_det   = tk.StringVar(value="—")
-    sv_err   = tk.StringVar(value="")
+    sv_state  = tk.StringVar(value="Idle")
+    sv_fps    = tk.StringVar(value="—")
+    sv_det    = tk.StringVar(value="—")
+    sv_err    = tk.StringVar(value="")
+    sv_stream = tk.StringVar(value="Unknown")
 
     def add_stat(col, label_text, var):
         tk.Label(stats_inner, text=label_text, bg=status_bar["bg"], fg="#333",
@@ -539,67 +627,82 @@ def render_inference_page(username):
                  font=("Arial", 11)).grid(row=1, column=col, padx=6, pady=(0, 6), sticky="w")
 
     add_stat(0, "State", sv_state)
-    add_stat(1, "FPS",   sv_fps)
+    add_stat(1, "FPS", sv_fps)
     add_stat(2, "Detections", sv_det)
     add_stat(3, "Last Error", sv_err)
+    add_stat(4, "Stream", sv_stream)
 
     def set_bar(level="info"):
         color = {"ok":"#e8f5e9", "warn":"#fff8e1", "err":"#ffebee", "info":"#f6f7f9"}.get(level, "#f6f7f9")
-        status_bar.configure(bg=color)
-        stats_inner.configure(bg=color)
+        status_bar.configure(bg=color); stats_inner.configure(bg=color)
         for w in stats_inner.winfo_children():
             w.configure(bg=color)
 
-    # Controls
-    controls = tk.Frame(content, bg="white")
-    controls.pack(side="bottom", pady=(0, 18), padx=18, fill="x")
-
-    # ---- Video area ----
-    video_holder = tk.Frame(content, bg="#111", width=960, height=720)
-    video_holder.pack(side="top", padx=18, pady=(0, 10), fill="both", expand=True)
-    video_holder.pack_propagate(False)
+    # Video area (fills remaining space in row 0)
+    video_holder = tk.Frame(content, bg="#111", bd=0)
+    video_holder.grid(row=0, column=0, sticky="nsew", padx=18, pady=(74, 10))  # leave space for header+status
+    video_holder.grid_propagate(True)
     video_lbl = tk.Label(video_holder, bg="black")
     video_lbl.pack(fill="both", expand=True)
 
-    # ------- Threads & state -------
+    # Controls bar (always visible in row 1)
+    controls_bar = tk.Frame(content, bg="#fafafa", bd=1, relief="solid", height=64)
+    controls_bar.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 18))
+    controls_bar.grid_propagate(False)
+
+    # NEW: Source label on the LEFT of the controls bar
+    source_lbl = tk.Label(
+        controls_bar,
+        text=f"Source: {stream_url}",
+        font=("Arial", 11),
+        bg="#fafafa",
+        fg="#555",
+        anchor="w"
+    )
+    source_lbl.pack(side="left", padx=8, pady=8)
+
+
+    # ---------- State ----------
     stop_event = threading.Event()
     running = {"v": False}
     frame_lock = threading.Lock()
-    latest_frame = {"img": None}  # RGB annotated frame
+    latest_frame = {"img": None}
+    t0, n = [time.time()], [0]
 
-    # FPS counters
-    t0 = [time.time()]
-    n  = [0]
+    # ---------- Stream monitor (read-only) ----------
+    def paint_stream_status(st: str):
+        if st == "running":
+            sv_stream.set("Active")
+        elif st == "starting":
+            sv_stream.set("Starting…")
+        else:
+            sv_stream.set("Stopped")
 
+    check_fn = lambda: check_status_rtsp_stream(PI_HOST, RTSP_TCP_PORT, "cam1")
+    monitor = StatusMonitor(root, check_fn, paint_stream_status, interval_ms=800)
+    content.bind("<Destroy>", lambda e: monitor.stop())
+
+    # ---------- Frame → UI ----------
     def push_frame_to_ui(annotated_bgr: np.ndarray, det_count: int | None = None):
-        """Callback for each annotated frame coming back from inference."""
         try:
             rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
         except Exception:
             rgb = annotated_bgr
-
         with frame_lock:
             latest_frame["img"] = rgb
-
-        # FPS
         n[0] += 1
         now = time.time()
         if now - t0[0] >= 1.0:
-            sv_fps.set(str(n[0]))
-            n[0] = 0
-            t0[0] = now
-
+            sv_fps.set(str(n[0])); n[0] = 0; t0[0] = now
         if det_count is not None:
             sv_det.set(str(det_count))
 
     def ui_refresh():
         if not video_lbl.winfo_exists():
             return
-        img = None
         with frame_lock:
             img = latest_frame["img"]
         if img is not None:
-            # fit to label
             h, w = img.shape[:2]
             win_w = max(1, video_lbl.winfo_width())
             win_h = max(1, video_lbl.winfo_height())
@@ -615,74 +718,68 @@ def render_inference_page(username):
                 pass
         video_lbl.after(33, ui_refresh)  # ~30 fps
 
-    # ---- HTTP/RTSP stream generator (simple, resilient) ----
-    def http_stream_generator(url: str, stop_event: threading.Event):
+    # ---------- HTTP/RTSP generator ----------
+    def http_stream_generator(url: str, stop_evt: threading.Event):
         print(f"[DEBUG] Opening stream: {url}", flush=True)
         cap = cv2.VideoCapture(url)
         if not cap.isOpened():
             print(f"[ERROR] Could not open stream: {url}", flush=True)
             return
-
         print("[DEBUG] Stream opened successfully", flush=True)
         last_ok = time.time()
-
-        while not stop_event.is_set():
+        while not stop_evt.is_set():
             ret, frame = cap.read()
             if not ret or frame is None:
-                # Brief backoff, attempt to reconnect if stalled for a while
                 time.sleep(0.05)
                 if time.time() - last_ok > 5.0:
                     print("[WARN] Stream stalled; attempting reconnect...", flush=True)
-                    cap.release()
-                    time.sleep(1)
+                    cap.release(); time.sleep(1)
                     cap = cv2.VideoCapture(url)
                     if not cap.isOpened():
                         print("[ERROR] Reconnect failed", flush=True)
                         break
                 continue
-
             last_ok = time.time()
             yield frame
-
         cap.release()
         print("[DEBUG] Stream closed", flush=True)
 
+    # ---------- Inference worker ----------
     def inference_worker():
         print("[DEBUG] Inference thread started", flush=True)
         sv_state.set("Connecting…"); set_bar("info")
         try:
-            # Lazy import to avoid heavy work at app startup
-            from AI.execute import run_inference_on_generator
-
-            # Kick off inference, frames come from HTTP/RTSP directly
+            from AI.execute import run_inference_on_generator  # lazy import
             result = run_inference_on_generator(
                 frame_generator=http_stream_generator(stream_url, stop_event),
                 on_frame=lambda img, det_count=None: push_frame_to_ui(img, det_count),
                 device="CPU",
-                use_openvino=True  # set False if you want the PyTorch path
+                use_openvino=True  # set False for PyTorch
             )
-
-            # If run_inference_on_generator is an iterator (no callback), drain it:
             if result is not None:
                 for annotated in result:
                     if stop_event.is_set():
                         break
                     push_frame_to_ui(annotated, None)
-
             sv_state.set("Stopped"); set_bar("info")
-
         except Exception as e:
-            sv_state.set("Error")
-            sv_err.set(str(e))
-            set_bar("err")
+            sv_state.set("Error"); sv_err.set(str(e)); set_bar("err")
         finally:
             running["v"] = False
-            start_btn.config(state="normal")
-            stop_btn.config(state="disabled")
+            try:
+                start_btn.config(state="normal")
+                stop_btn.config(state="disabled")
+            except Exception:
+                pass
 
+    # ---------- Buttons (always visible) ----------
     def start_inference():
-        print("[DEBUG] Start button pressed", flush=True)
+        print("[DEBUG] Start Inference pressed", flush=True)
         if running["v"]:
+            return
+        if sv_stream.get() != "Active":
+            sv_err.set("Stream not active. Start the Pi feed on the Camera page.")
+            set_bar("warn")
             return
         sv_err.set("")
         stop_event.clear()
@@ -693,32 +790,32 @@ def render_inference_page(username):
         threading.Thread(target=inference_worker, daemon=True).start()
 
     def stop_inference():
-        print("[DEBUG] Stop button pressed", flush=True)
+        print("[DEBUG] Stop Inference pressed", flush=True)
         if not running["v"]:
             return
         sv_state.set("Stopping…"); set_bar("warn")
         stop_event.set()
 
-    # Controls (aligned right)
-    start_btn = tk.Button(controls, text="Start Inference", font=BTN_FONT,
-                          bg=COLORS["green"], fg="black", command=start_inference)
-    stop_btn  = tk.Button(controls, text="Stop Inference",  font=BTN_FONT,
-                          bg=COLORS["pink"],  fg="black", command=stop_inference)
-    back_btn  = tk.Button(controls, text="Back",            font=BTN_FONT,
-                          bg=COLORS["grey"],  fg="black", command=lambda: render_section("camera", username))
+    # create + show buttons now
+    start_btn = tk.Button(controls_bar, text="Start Inference", font=BTN_FONT,
+                          bg=COLORS["yellow"], fg="black", command=start_inference)
+    stop_btn  = tk.Button(controls_bar, text="Stop Inference", font=BTN_FONT,
+                          bg=COLORS["pink"], fg="black", command=stop_inference)
+    back_btn  = tk.Button(controls_bar, text="Back", font=BTN_FONT,
+                          bg=COLORS["grey"], fg="black",
+                          command=lambda: render_section("camera", username))
 
-    back_btn.pack(side="right", padx=6)
-    stop_btn.pack(side="right", padx=6)
-    start_btn.pack(side="right", padx=6)
+    back_btn.pack(side="right", padx=8, pady=8)
+    stop_btn.pack(side="right", padx=8, pady=8)
+    start_btn.pack(side="right", padx=8, pady=8)
 
-    # Ensure background work stops if user leaves page
+    # initial state
+    start_btn.config(state="normal")
+    stop_btn.config(state="disabled")
+
+    # cleanup + kick UI
     content.bind("<Destroy>", lambda e: stop_event.set())
-
-    # Begin UI refresh loop
     ui_refresh()
-
-
-
 
 
 # START 

@@ -73,7 +73,6 @@ def run_inference_on_generator(frame_generator, on_frame=None, device="CPU", use
 
         fps_n += 1
         if time.time() - fps_t0 >= 1.0:
-            print(f"[execute] FPS: {fps_n}")
             fps_n = 0
             fps_t0 = time.time()
 
