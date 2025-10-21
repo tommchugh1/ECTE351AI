@@ -47,7 +47,6 @@ working_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 sys.path.insert(1, working_dir)
 from Realtime_Filtering import get_filtered_frames
-from AI.execute import run_inference_on_generator
 
 SCRIPT_PATHS = {
     "execute":   Path(os.path.join(working_dir, "AI", "execute.py")),
@@ -414,10 +413,10 @@ def render_section(section, username):
 
         # --- Build Tiles ---
         tiles = [
-            ("Start Stream",      "🟢", COLORS["green"], on_start_clicked),
-            ("Stop Stream",       "🔴", COLORS["pink"], on_stop_clicked),
-            ("Open Live Feed",    "🌐", COLORS["blue"], open_live_feed),
-            ("Realtime Filtering","🪄", COLORS["peach"],  run_realtime_filtering),
+            ("Start Stream",      "🟢", COLORS["green"], lambda: on_start_clicked),
+            ("Stop Stream",       "🔴", COLORS["pink"], lambda: on_stop_clicked),
+            ("Open Live Feed",    "🌐", COLORS["blue"], lambda: open_live_feed),
+            ("Realtime Filtering","🪄", COLORS["peach"],  lambda: run_realtime_filtering),
             ("Run Inference", "🧠", COLORS["yellow"], lambda: render_inference_page(username)),
         ]
         
@@ -486,10 +485,10 @@ def render_section(section, username):
 
 def render_inference_page(username):
     """
-    Full-page inference that:
-      - consumes filtered frames from get_filtered_frames(...)
-      - passes them to run_inference_on_generator
-      - displays annotated frames in a Tk label
+    Inference page that reads frames directly from an HTTP (or RTSP) stream
+    and pushes annotated frames to the UI.
+    - Uses a simple OpenCV VideoCapture-based generator.
+    - No Realtime_Filtering / get_filtered_frames dependency.
     """
 
     clear_root()
@@ -513,10 +512,13 @@ def render_inference_page(username):
     content = tk.Frame(root, bg="white")
     content.pack(side="right", expand=True, fill="both")
 
-    tk.Label(content, text="🧠 Inference (Filtered → Model)", font=SECTION_FONT, bg="white").pack(pady=(18, 6))
-    tk.Label(content, text=f"Source: {STREAM_URL_RTSP}", font=("Arial", 11), bg="white", fg="#555").pack(pady=(0, 8))
+    # Choose stream URL: prefer HTTP if you defined STREAM_URL_HTTP; else fall back to RTSP
+    stream_url = globals().get("STREAM_URL_HTTP", STREAM_URL_RTSP)
 
-    # Status bar
+    tk.Label(content, text="🧠 Inference (Live Stream → Model)", font=SECTION_FONT, bg="white").pack(pady=(18, 6))
+    tk.Label(content, text=f"Source: {stream_url}", font=("Arial", 11), bg="white", fg="#555").pack(pady=(0, 8))
+
+    # Status bar (State / FPS / Detections / Last Error)
     status_bar = tk.Frame(content, bg="#f6f7f9", bd=1, relief="solid", height=56)
     status_bar.pack(fill="x", padx=18, pady=(0, 10))
     status_bar.pack_propagate(False)
@@ -552,6 +554,12 @@ def render_inference_page(username):
     controls = tk.Frame(content, bg="white")
     controls.pack(side="bottom", pady=(0, 18), padx=18, fill="x")
 
+    # ---- Video area ----
+    video_holder = tk.Frame(content, bg="#111", width=960, height=720)
+    video_holder.pack(side="top", padx=18, pady=(0, 10), fill="both", expand=True)
+    video_holder.pack_propagate(False)
+    video_lbl = tk.Label(video_holder, bg="black")
+    video_lbl.pack(fill="both", expand=True)
 
     # ------- Threads & state -------
     stop_event = threading.Event()
@@ -564,16 +572,16 @@ def render_inference_page(username):
     n  = [0]
 
     def push_frame_to_ui(annotated_bgr: np.ndarray, det_count: int | None = None):
-        """Called by inference when a new annotated frame is ready."""
+        """Callback for each annotated frame coming back from inference."""
         try:
             rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
         except Exception:
-            rgb = annotated_bgr  # in case already RGB
+            rgb = annotated_bgr
 
         with frame_lock:
             latest_frame["img"] = rgb
 
-        # fps
+        # FPS
         n[0] += 1
         now = time.time()
         if now - t0[0] >= 1.0:
@@ -607,49 +615,62 @@ def render_inference_page(username):
                 pass
         video_lbl.after(33, ui_refresh)  # ~30 fps
 
-    def filtered_generator():
-        print("[DEBUG] Starting filtered_generator()")
-        gen = get_filtered_frames(
-            STREAM_URL_RTSP,
-            enable_chroma_key=False,
-            enable_grayscale=False,
-            enable_binarization=False,
-            enable_rotation=False,
-            enable_zoom=False,
-            threshold_val=200,
-            stop_event=stop_event,
-        )
-        for f in gen:
-            if stop_event.is_set():
-                break
-            print("[DEBUG] Yielding filtered frame")
-            yield f
+    # ---- HTTP/RTSP stream generator (simple, resilient) ----
+    def http_stream_generator(url: str, stop_event: threading.Event):
+        print(f"[DEBUG] Opening stream: {url}", flush=True)
+        cap = cv2.VideoCapture(url)
+        if not cap.isOpened():
+            print(f"[ERROR] Could not open stream: {url}", flush=True)
+            return
+
+        print("[DEBUG] Stream opened successfully", flush=True)
+        last_ok = time.time()
+
+        while not stop_event.is_set():
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                # Brief backoff, attempt to reconnect if stalled for a while
+                time.sleep(0.05)
+                if time.time() - last_ok > 5.0:
+                    print("[WARN] Stream stalled; attempting reconnect...", flush=True)
+                    cap.release()
+                    time.sleep(1)
+                    cap = cv2.VideoCapture(url)
+                    if not cap.isOpened():
+                        print("[ERROR] Reconnect failed", flush=True)
+                        break
+                continue
+
+            last_ok = time.time()
+            yield frame
+
+        cap.release()
+        print("[DEBUG] Stream closed", flush=True)
 
     def inference_worker():
-        print("[DEBUG] Inference thread started")
+        print("[DEBUG] Inference thread started", flush=True)
         sv_state.set("Connecting…"); set_bar("info")
         try:
+            # Lazy import to avoid heavy work at app startup
+            from AI.execute import run_inference_on_generator
+
+            # Kick off inference, frames come from HTTP/RTSP directly
             result = run_inference_on_generator(
-                frame_generator=filtered_generator(),
+                frame_generator=http_stream_generator(stream_url, stop_event),
                 on_frame=lambda img, det_count=None: push_frame_to_ui(img, det_count),
+                device="CPU",
+                use_openvino=True  # set False if you want the PyTorch path
             )
-        except TypeError:
-            # older signature: try without 'device'
-            result = run_inference_on_generator(
-                filtered_generator(),
-                on_frame=lambda img, det_count=None: push_frame_to_ui(img, det_count),
-            )
-            print("[DEBUG] run_inference_on_generator returned:", type(result))
+
+            # If run_inference_on_generator is an iterator (no callback), drain it:
             if result is not None:
                 for annotated in result:
                     if stop_event.is_set():
                         break
-                    if isinstance(annotated, tuple):
-                        img, dets = annotated[0], annotated[1] if len(annotated) > 1 else None
-                        push_frame_to_ui(img, dets)
-                    else:
-                        push_frame_to_ui(annotated, None)
+                    push_frame_to_ui(annotated, None)
+
             sv_state.set("Stopped"); set_bar("info")
+
         except Exception as e:
             sv_state.set("Error")
             sv_err.set(str(e))
@@ -678,36 +699,24 @@ def render_inference_page(username):
         sv_state.set("Stopping…"); set_bar("warn")
         stop_event.set()
 
-    start_btn = tk.Button(
-        controls, text="Start Inference",
-        font=BTN_FONT, bg=COLORS["green"], fg="black",
-        command=start_inference
-    )
-    stop_btn = tk.Button(
-        controls, text="Stop Inference",
-        font=BTN_FONT, bg=COLORS["pink"], fg="black",
-        command=stop_inference
-    )
-    back_btn = tk.Button(
-        controls, text="Back",
-        font=BTN_FONT, bg=COLORS["grey"], fg="black",
-        command=lambda: render_section("camera", username)
-    )
+    # Controls (aligned right)
+    start_btn = tk.Button(controls, text="Start Inference", font=BTN_FONT,
+                          bg=COLORS["green"], fg="black", command=start_inference)
+    stop_btn  = tk.Button(controls, text="Stop Inference",  font=BTN_FONT,
+                          bg=COLORS["pink"],  fg="black", command=stop_inference)
+    back_btn  = tk.Button(controls, text="Back",            font=BTN_FONT,
+                          bg=COLORS["grey"],  fg="black", command=lambda: render_section("camera", username))
 
-    # align them to the right edge
     back_btn.pack(side="right", padx=6)
     stop_btn.pack(side="right", padx=6)
     start_btn.pack(side="right", padx=6)
 
-    video_holder = tk.Frame(content, bg="#111", width=960, height=720)
-    video_holder.pack(side="top", padx=18, pady=(0, 10), fill="both", expand=True)
-    video_holder.pack_propagate(False)
+    # Ensure background work stops if user leaves page
+    content.bind("<Destroy>", lambda e: stop_event.set())
 
-    video_lbl = tk.Label(video_holder, bg="black")
-    video_lbl.pack(fill="both", expand=True)
-
-
+    # Begin UI refresh loop
     ui_refresh()
+
 
 
 
