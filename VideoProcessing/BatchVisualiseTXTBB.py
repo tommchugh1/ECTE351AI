@@ -3,11 +3,12 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 # --- CONFIG ---
-input_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\251012\labels"  # folder with .txt files
+input_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\251022 1339\ImgSeq - Copy (10)\labels"  # folder with .txt files
 image_width = 1920
 image_height = 1080
 class_colors = {0: "red", 1: "blue", 2: "green", 3: "yellow"}
-output_folder = r"C:\Users\Group8\Documents\ModelTrainingData\OutputPhotosAndLabel\251012\labels\BB Vis"  # Folder where images will be saved
+output_folder = os.path.join(input_folder, "BB Vis")  # Folder where images will be saved 
+
 
 # --- Create output directory if it doesn't exist ---
 if not os.path.exists(output_folder):
