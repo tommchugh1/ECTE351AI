@@ -90,5 +90,7 @@ if __name__ == "__main__":
     if os.path.exists(IMAGE_PATH):
         _ = get_pt_model()  # or get_ov_model()
         print("[execute] Sanity check OK.")
+        model = YOLO(OV_MODEL_PATH)
+        model.predict(IMAGE_PATH)
     else:
         print(f"[execute] Missing sample image: {IMAGE_PATH}")

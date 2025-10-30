@@ -17,12 +17,13 @@ if __name__ == '__main__':
 
     # Define paths
     header = os.path.dirname(os.path.realpath(__file__))
-    data_yaml = 'C:\\Users\\Group8\\Desktop' + '\\' + 'dataset4/data.yaml'  # data.yaml directory
+    data_yaml = 'C:\\Users\\Group8\\Desktop' + '\\' + 'dataset5/data.yaml'  # data.yaml directory
     project_dir = header + '\\' + 'RUNS/train'       # Directory to save training results
     experiment_name = 'bolt_training'                # Name for this training run
     model_path = header + '\\' + 'yolov8n.yaml'      # Directory for model to be saved
 
     # Load yolov8 model
+    
     #retrained = YOLO(model_path)
     retrained = YOLO('yolov8n.yaml')
     retrained.model.to(torch.device("cpu"))
